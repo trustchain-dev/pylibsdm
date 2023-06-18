@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "pylibsdm"
+version = "0.1.0"
+description = "Python library for handling Secure Dynamic Messaging (SDM) of NFC cards like the NTAG 424 DNA"
+authors = ["Dominik George <nik@naturalnet.de>"]
+repository = "https://codeberg.org/Natureshadow/pylibsdm"
+license = "Apache-2.0"
+keywords = ["nfc", "ntag424", "an12196"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
