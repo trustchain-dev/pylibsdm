@@ -30,7 +30,7 @@ class Tag:
     _keys: list[bytes]
 
     _prefix_ivc: ClassVar[bytes] = b"\xa5\x5a"
-    _prefix_ivr: ClassVar[bytes] = b"\c5a\xa5"
+    _prefix_ivr: ClassVar[bytes] = b"\x5a\xa5"
 
     class CommandHeader(Enum):
         ISO_SELECT_NDEF_APP = (0x00, 0xA4, 0x04, 0x0C)
@@ -80,8 +80,7 @@ class Tag:
             self.current_key_nr,
         )
 
-        key = self._keys[self.current_key_nr]
-        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
+        cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, NULL_IV)
         return cipher.encrypt(self._prefix_ivc + self.ti + pack("<H", self.cmdctr) + 8 * b"\0")
 
     def send_command(
@@ -229,10 +228,13 @@ class Tag:
         self.cmdctr = 0
         LOGGER.debug("AUTH: Reset command counter")
 
-    def change_key_same(self, key_nr: int, new_key: bytes, version: int = 1) -> bool:
+    def change_key_same(
+        self, key_nr: int, new_key: bytes, version: int = 1, auth_first: bool = True
+    ) -> bool:
         LOGGER.debug("Changing key nr %d using same key for auth", key_nr)
 
-        self.authenticate_ev2_first(key_nr)
+        if auth_first:
+            self.authenticate_ev2_first(key_nr)
 
         plain_input = pad(new_key + version.to_bytes(), 16, style="iso7816")
         self.send_command_secure(
