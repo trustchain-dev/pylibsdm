@@ -151,6 +151,46 @@ class Tag:
         self.send_command(self.CommandHeader.ISO_SELECT_NDEF_APP, aid.value)
         self.reset_session()
 
+    def derive_challenge_response(self, key: bytes, e_rndb: bytes) -> tuple[bytes, bytes, bytes]:
+        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
+        rndb = cipher.decrypt(e_rndb)
+        rndb_ = rndb[1:] + rndb[0].to_bytes()
+        rnda = get_random_bytes(16)
+        LOGGER.debug("AUTH: RndA %s, RndB %s", hexlify(rnda), hexlify(rndb))
+
+        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
+        encrypted = cipher.encrypt(rnda + rndb_)
+
+        return rnda, rndb, encrypted
+
+    def derive_session_keys(self, key: bytes, rnda: bytes, rndb: bytes) -> tuple[bytes, bytes]:
+        sv_1 = (
+            b"\xa5\x5a\x00\x01\x00\x80"
+            + rnda[0:2]
+            + bytes_xor(rnda[2:8], rndb[0:6])
+            + rndb[6:]
+            + rnda[8:]
+        )
+        sv_2 = (
+            b"\x5a\xa5\x00\x01\x00\x80"
+            + rnda[0:2]
+            + bytes_xor(rnda[2:8], rndb[0:6])
+            + rndb[6:]
+            + rnda[8:]
+        )
+
+        cmac = CMAC.new(key, ciphermod=AES)
+        cmac.update(sv_1)
+        k_ses_auth_enc = cmac.digest()
+        LOGGER.debug("AUTH: Calculated session ENC key")
+
+        cmac = CMAC.new(key, ciphermod=AES)
+        cmac.update(sv_2)
+        k_ses_auth_mac = cmac.digest()
+        LOGGER.debug("AUTH: Calculated session MAC key")
+
+        return k_ses_auth_enc, k_ses_auth_mac
+
     def authenticate_ev2_first(self, key_nr: int = 0) -> bool:
         self.select_application(self.Application.NDEF)
         self.reset_session()
@@ -167,15 +207,7 @@ class Tag:
             expected=self.Status.ADDITIONAL_DF_EXPECTED,
         )
 
-        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
-        rndb = cipher.decrypt(e_rndb)
-        rndb_ = rndb[1:] + rndb[0].to_bytes()
-        rnda = get_random_bytes(16)
-        LOGGER.debug("AUTH: RndA %s, RndB %s", hexlify(rnda), hexlify(rndb))
-
-        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
-        encrypted = cipher.encrypt(rnda + rndb_)
-
+        rnda, rndb, encrypted = self.derive_challenge_response(key, e_rndb)
         e_data = self.send_command(
             self.CommandHeader.ADDITIONAL_DF, encrypted, expected=self.Status.OK
         )
@@ -199,31 +231,7 @@ class Tag:
             raise ValueError("Received RndA does not match")
         LOGGER.debug("AUTH: RndA challenge response matches")
 
-        sv_1 = (
-            b"\xa5\x5a\x00\x01\x00\x80"
-            + rnda[0:2]
-            + bytes_xor(rnda[2:8], rndb[0:6])
-            + rndb[6:]
-            + rnda[8:]
-        )
-        sv_2 = (
-            b"\x5a\xa5\x00\x01\x00\x80"
-            + rnda[0:2]
-            + bytes_xor(rnda[2:8], rndb[0:6])
-            + rndb[6:]
-            + rnda[8:]
-        )
-
-        cmac = CMAC.new(key, ciphermod=AES)
-        cmac.update(sv_1)
-        self.k_ses_auth_enc = cmac.digest()
-        LOGGER.debug("AUTH: Calculated session ENC key")
-
-        cmac = CMAC.new(key, ciphermod=AES)
-        cmac.update(sv_2)
-        self.k_ses_auth_mac = cmac.digest()
-        LOGGER.debug("AUTH: Calculated session MAC key")
-
+        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(key, rnda, rndb)
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
@@ -241,16 +249,7 @@ class Tag:
             expected=self.Status.ADDITIONAL_DF_EXPECTED,
         )
 
-        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
-        rndb = cipher.decrypt(e_rndb)
-
-        rndb_ = rndb[1:] + rndb[0].to_bytes()
-        rnda = get_random_bytes(16)
-        LOGGER.debug("AUTH: RndA %s, RndB %s", hexlify(rnda), hexlify(rndb))
-
-        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
-        encrypted = cipher.encrypt(rnda + rndb_)
-
+        rnda, rndb, encrypted = self.derive_challenge_response(key, e_rndb)
         e_rnda_ = self.send_command(
             self.CommandHeader.ADDITIONAL_DF, encrypted, expected=self.Status.OK
         )
@@ -263,31 +262,7 @@ class Tag:
             raise ValueError("Received RndA does not match")
         LOGGER.debug("AUTH: RndA challenge response matches")
 
-        sv_1 = (
-            b"\xa5\x5a\x00\x01\x00\x80"
-            + rnda[0:2]
-            + bytes_xor(rnda[2:8], rndb[0:6])
-            + rndb[6:]
-            + rnda[8:]
-        )
-        sv_2 = (
-            b"\x5a\xa5\x00\x01\x00\x80"
-            + rnda[0:2]
-            + bytes_xor(rnda[2:8], rndb[0:6])
-            + rndb[6:]
-            + rnda[8:]
-        )
-
-        cmac = CMAC.new(key, ciphermod=AES)
-        cmac.update(sv_1)
-        self.k_ses_auth_enc = cmac.digest()
-        LOGGER.debug("AUTH: Calculated session ENC key")
-
-        cmac = CMAC.new(key, ciphermod=AES)
-        cmac.update(sv_2)
-        self.k_ses_auth_mac = cmac.digest()
-        LOGGER.debug("AUTH: Calculated session MAC key")
-
+        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(key, rnda, rndb)
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
