@@ -35,6 +35,7 @@ class Tag:
     class CommandHeader(Enum):
         ISO_SELECT_NDEF_APP = (0x00, 0xA4, 0x04, 0x0C)
         AUTH_EV2_FIRST = (0x90, 0x71, 0x00, 0x00)
+        AUTH_AES_NON_FIRST = (0x90, 0x77, 0x00, 0x00)
         ADDITIONAL_DF = (0x90, 0xAF, 0x00, 0x00)
         CHANGE_KEY = (0x90, 0xC4, 0x00, 0x00)
 
@@ -152,6 +153,7 @@ class Tag:
 
     def authenticate_ev2_first(self, key_nr: int = 0) -> bool:
         self.select_application(self.Application.NDEF)
+        self.reset_session()
 
         LOGGER.debug("AUTH: Doing EV2 authentication with key nr %d", key_nr)
 
@@ -225,8 +227,69 @@ class Tag:
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
-        self.cmdctr = 0
-        LOGGER.debug("AUTH: Reset command counter")
+    def authenticate_aes_non_first(self, key_nr: int = 0) -> bool:
+        self.select_application(self.Application.NDEF)
+        self.reset_session()
+
+        LOGGER.debug("AUTH: Doing AES authentication with key nr %d", key_nr)
+
+        key = self._keys[key_nr]
+
+        e_rndb = self.send_command(
+            self.CommandHeader.AUTH_AES_NON_FIRST,
+            key_nr.to_bytes(),
+            expected=self.Status.ADDITIONAL_DF_EXPECTED,
+        )
+
+        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
+        rndb = cipher.decrypt(e_rndb)
+
+        rndb_ = rndb[1:] + rndb[0].to_bytes()
+        rnda = get_random_bytes(16)
+        LOGGER.debug("AUTH: RndA %s, RndB %s", hexlify(rnda), hexlify(rndb))
+
+        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
+        encrypted = cipher.encrypt(rnda + rndb_)
+
+        e_rnda_ = self.send_command(
+            self.CommandHeader.ADDITIONAL_DF, encrypted, expected=self.Status.OK
+        )
+
+        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
+        rnda_ = cipher.decrypt(e_rnda_)
+
+        rnda_recv = rnda_[-1].to_bytes() + rnda_[:-1]
+        if rnda_recv != rnda:
+            raise ValueError("Received RndA does not match")
+        LOGGER.debug("AUTH: RndA challenge response matches")
+
+        sv_1 = (
+            b"\xa5\x5a\x00\x01\x00\x80"
+            + rnda[0:2]
+            + bytes_xor(rnda[2:8], rndb[0:6])
+            + rndb[6:]
+            + rnda[8:]
+        )
+        sv_2 = (
+            b"\x5a\xa5\x00\x01\x00\x80"
+            + rnda[0:2]
+            + bytes_xor(rnda[2:8], rndb[0:6])
+            + rndb[6:]
+            + rnda[8:]
+        )
+
+        cmac = CMAC.new(key, ciphermod=AES)
+        cmac.update(sv_1)
+        self.k_ses_auth_enc = cmac.digest()
+        LOGGER.debug("AUTH: Calculated session ENC key")
+
+        cmac = CMAC.new(key, ciphermod=AES)
+        cmac.update(sv_2)
+        self.k_ses_auth_mac = cmac.digest()
+        LOGGER.debug("AUTH: Calculated session MAC key")
+
+        self.current_key_nr = key_nr
+        LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
     def change_key_same(
         self, key_nr: int, new_key: bytes, version: int = 1, auth_first: bool = True

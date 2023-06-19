@@ -26,6 +26,8 @@ class MockType4Tag:
         "90AF00002035C3E05A752E0144BAC0DE51C1F22C56B34408A23D8AEA266CAB947EA8E0118D00": "3FA64DB5446D1F34CD6EA311167F5E4985B89690C04A05F17FA7AB2F081206639100",
         "90AF000020FF0306E47DFBC50087C4D8A78E88E62DE1E8BE457AA477C707E2F0874916A8B100": "0CC9A8094A8EEA683ECAAC5C7BF20584206D0608D477110FC6B3D5D3F65C3A6A9100",
         "90C400002900C0EB4DEEFEDDF0B513A03A95A75491818580503190D4D05053FF75668A01D6FDA6610234BDED643200": "9100",
+        "90770000010000": "A6A2B3C572D06C097BB8DB70463E22DC91AF",
+        "90AF000020BE7D45753F2CAB85F34BC60CE58B940763FE969658A532DF6D95EA2773F6E99100": "B888349C24B315EAB5B589E279C8263E9100",
     }
 
     def __init__(self, apdu_map: Optional[dict[str, str]] = None):
@@ -147,6 +149,23 @@ def test_authenticate_ev2_first_key_3(sdm_tag):
     assert sdm_tag.pcdcap2 == unhexlify("000000000000")
     assert sdm_tag.k_ses_auth_enc == unhexlify("7A93D6571E4B180FCA6AC90C9A7488D4")
     assert sdm_tag.k_ses_auth_mac == unhexlify("FC4AF159B62E549B5812394CAB1918CC")
+
+
+def test_authenticate_aes_non_first_key_0(sdm_tag):
+    # ref: page 39, table 24
+    with mock.patch(
+        "pylibsdm.tag.get_random_bytes", return_value=unhexlify("60BE759EDA560250AC57CDDC11743CF6")
+    ):
+        sdm_tag.authenticate_aes_non_first()
+
+    assert sdm_tag.tag.apdus_called == [
+        "00A4040C07D276000085010100",
+        "90770000010000",
+        "90AF000020BE7D45753F2CAB85F34BC60CE58B940763FE969658A532DF6D95EA2773F6E99100",
+    ]
+    assert (sdm_tag.ti, sdm_tag.cmdctr, sdm_tag.current_key_nr) == (4 * b"\0", 0, 0)
+    assert sdm_tag.k_ses_auth_enc == unhexlify("4CF3CB41A22583A61E89B158D252FC53")
+    assert sdm_tag.k_ses_auth_mac == unhexlify("5529860B2FC5FB6154B7F28361D30BF9")
 
 
 def test_change_key_same(sdm_tag):
