@@ -8,12 +8,12 @@ from unittest import mock
 
 import pytest
 
-from pylibsdm import tag
+from pylibsdm.tag import ntag424dna
 
 
 @pytest.fixture
 def sdm_tag():
-    return tag.Tag(MockType4Tag())
+    return ntag424dna.NTAG424DNA(MockType4Tag())
 
 
 class MockType4Tag:
@@ -116,7 +116,7 @@ def test_select_application(sdm_tag):
 def test_authenticate_ev2_first_key_0(sdm_tag):
     # ref: page 29, table 14
     with mock.patch(
-        "pylibsdm.tag.get_random_bytes", return_value=unhexlify("13C5DB8A5930439FC3DEF9A4C675360F")
+        "pylibsdm.tag.ntag424dna.get_random_bytes", return_value=unhexlify("13C5DB8A5930439FC3DEF9A4C675360F")
     ):
         sdm_tag.authenticate_ev2_first()
 
@@ -135,7 +135,7 @@ def test_authenticate_ev2_first_key_0(sdm_tag):
 def test_authenticate_ev2_first_key_3(sdm_tag):
     # ref: page 35, table 20
     with mock.patch(
-        "pylibsdm.tag.get_random_bytes", return_value=unhexlify("B98F4C50CF1C2E084FD150E33992B048")
+        "pylibsdm.tag.ntag424dna.get_random_bytes", return_value=unhexlify("B98F4C50CF1C2E084FD150E33992B048")
     ):
         sdm_tag.authenticate_ev2_first(3)
 
@@ -154,7 +154,7 @@ def test_authenticate_ev2_first_key_3(sdm_tag):
 def test_authenticate_aes_non_first_key_0(sdm_tag):
     # ref: page 39, table 24
     with mock.patch(
-        "pylibsdm.tag.get_random_bytes", return_value=unhexlify("60BE759EDA560250AC57CDDC11743CF6")
+        "pylibsdm.tag.ntag424dna.get_random_bytes", return_value=unhexlify("60BE759EDA560250AC57CDDC11743CF6")
     ):
         sdm_tag.authenticate_aes_non_first()
 
