@@ -55,10 +55,10 @@ class ParamValidator:
         read_ctr_mirror = bool(picc_data_tag & 64)
         uid_length = picc_data_tag & 7
 
-        uid = picc_data[1:uid_length+1]
-        read_ctr = unpack("<L", picc_data[uid_length+1:uid_length+4] + b"\0")[0]
-
+        next_offset = 1
         if uid_mirror:
-            self.uid = uid
+            self.uid = picc_data[next_offset:next_offset+uid_length]
+            next_offset += uid_length
         if read_ctr_mirror:
-            self.read_ctr = read_ctr
+            self.read_ctr = unpack("<L", picc_data[next_offset:next_offset+3] + b"\0")[0]
+            next_offset += 3
