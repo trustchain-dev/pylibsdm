@@ -23,7 +23,12 @@ class ParamValidator:
         self.uid = None
         self.read_ctr = None
 
-    def generate_sdm_session_key(self):
+    @property
+    def ive(self) -> bytes:
+        cipher = AES.new(self.k_ses_sdm_file_read_enc, AES.MODE_CBC, NULL_IV)
+        return cipher.encrypt(pack("<L", self.read_ctr)[:3] + 13 * b"\0")
+
+    def generate_sdm_session_keys(self):
         sv_1 = b"\xc3\x3c\x00\x01\x00\x80"
         sv_2 = b"\x3c\xc3\x00\x01\x00\x80"
 
@@ -37,13 +42,11 @@ class ParamValidator:
 
         cmac = CMAC.new(self.k_sdm_file_read, ciphermod=AES)
         cmac.update(sv_1)
-        k_ses_sdm_file_read_enc = cmac.digest()
+        self.k_ses_sdm_file_read_enc = cmac.digest()
 
         cmac = CMAC.new(self.k_sdm_file_read, ciphermod=AES)
         cmac.update(sv_2)
-        k_ses_sdm_file_read_mac = cmac.digest()
-
-        return k_ses_sdm_file_read_enc, k_ses_sdm_file_read_mac
+        self.k_ses_sdm_file_read_mac = cmac.digest()
 
     def decrypt_picc_data(self, e_picc_data: str):
         cipher = AES.new(self.k_sdm_meta_read, AES.MODE_CBC, NULL_IV)
@@ -62,3 +65,12 @@ class ParamValidator:
         if read_ctr_mirror:
             self.read_ctr = unpack("<L", picc_data[next_offset : next_offset + 3] + b"\0")[0]
             next_offset += 3
+
+    def decrypt_file_data(self, e_file_data: str, e_picc_data: str):
+        self.decrypt_picc_data(e_picc_data)
+        self.generate_sdm_session_keys()
+
+        cipher = AES.new(self.k_ses_sdm_file_read_enc, AES.MODE_CBC, self.ive)
+        file_data = cipher.decrypt(unhexlify(e_file_data))
+
+        return file_data
