@@ -10,10 +10,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad
 from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
 
-from ..util import bytes_xor
-
-
-NULL_IV = 16 * b"\0"
+from ..util import NULL_IV, bytes_xor
 
 LOGGER = logging.getLogger(__name__)
 
