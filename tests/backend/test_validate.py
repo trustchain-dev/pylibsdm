@@ -13,6 +13,7 @@ def test_generate_sdm_session_key():
     assert k_ses_sdm_file_read_enc == unhexlify("66DA61797E23DECA5D8ECA13BBADF7A9")
     assert k_ses_sdm_file_read_mac == unhexlify("3A3E8110E05311F7A3FCF0D969BF2B48")
 
+
 def test_decrypt_picc_data():
     validator = ParamValidator()
     validator.decrypt_picc_data("EF963FF7828658A599F3041510671E88")

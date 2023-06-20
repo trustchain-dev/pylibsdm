@@ -16,7 +16,7 @@ class ParamValidator:
     uid: Optional[bytes]
     read_ctr: Optional[int]
 
-    def __init__(self, k_sdm_file_read: bytes = 16*b"\0", k_sdm_meta_read: bytes = 16*b"\0"):
+    def __init__(self, k_sdm_file_read: bytes = 16 * b"\0", k_sdm_meta_read: bytes = 16 * b"\0"):
         self.k_sdm_file_read = k_sdm_file_read
         self.k_sdm_meta_read = k_sdm_meta_read
 
@@ -57,8 +57,8 @@ class ParamValidator:
 
         next_offset = 1
         if uid_mirror:
-            self.uid = picc_data[next_offset:next_offset+uid_length]
+            self.uid = picc_data[next_offset : next_offset + uid_length]
             next_offset += uid_length
         if read_ctr_mirror:
-            self.read_ctr = unpack("<L", picc_data[next_offset:next_offset+3] + b"\0")[0]
+            self.read_ctr = unpack("<L", picc_data[next_offset : next_offset + 3] + b"\0")[0]
             next_offset += 3
