@@ -11,11 +11,12 @@ from Crypto.Util.Padding import pad
 from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
 
 from ..util import NULL_IV, bytes_xor
+from .tag import Tag
 
 LOGGER = logging.getLogger(__name__)
 
 
-class NTAG424DNA:
+class NTAG424DNA(Tag):
     tag: Type4Tag
     cmdctr: int
     ti: bytes
@@ -229,6 +230,8 @@ class NTAG424DNA:
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
+        return True
+
     def authenticate_aes_non_first(self, key_nr: int = 0) -> bool:
         self.select_application(self.Application.NDEF)
         self.reset_session()
@@ -259,6 +262,8 @@ class NTAG424DNA:
         self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(key, rnda, rndb)
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
+
+        return True
 
     def change_key_same(
         self, key_nr: int, new_key: bytes, version: int = 1, auth_first: bool = True
