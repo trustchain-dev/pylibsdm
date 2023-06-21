@@ -1,4 +1,4 @@
-from binascii import unhexlify
+from binascii import hexlify, unhexlify
 from struct import pack, unpack
 from typing import Optional
 
@@ -74,3 +74,14 @@ class ParamValidator:
         file_data = cipher.decrypt(unhexlify(e_file_data))
 
         return file_data
+
+    def validate_cmac(self, cmac_provided: str, e_picc_data: str, mac_input: Optional[str] = None):
+        self.decrypt_picc_data(e_picc_data)
+        self.generate_sdm_session_keys()
+
+        cmac = CMAC.new(self.k_ses_sdm_file_read_mac, ciphermod=AES)
+        if mac_input is not None:
+            cmac.update(mac_input.encode())
+        cmac_expected = cmac.digest()[1::2]
+
+        return cmac_expected == unhexlify(cmac_provided)

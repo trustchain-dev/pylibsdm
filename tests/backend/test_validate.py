@@ -29,3 +29,19 @@ def test_decrypt_file_data():
     )
 
     assert file_data == unhexlify("78787878787878787878787878787878")
+
+
+def test_validate_cmac_zero_length():
+    validator = ParamValidator()
+
+    assert validator.validate_cmac("94EED9EE65337086", "EF963FF7828658A599F3041510671E88")
+
+
+def test_validate_cmac_input():
+    validator = ParamValidator()
+
+    assert validator.validate_cmac(
+        "ECC1E7F6C6C73BF6",
+        "FD91EC264309878BE6345CBE53BADF40",
+        "CEE9A53E3E463EF1F459635736738962&cmac=",
+    )
