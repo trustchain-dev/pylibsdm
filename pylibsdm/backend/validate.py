@@ -1,12 +1,11 @@
-from binascii import hexlify, unhexlify
+from binascii import unhexlify
 from struct import pack, unpack
 from typing import Optional
 
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
-from Crypto.Util.Padding import pad
 
-from ..util import NULL_IV, bytes_xor
+from ..util import NULL_IV
 
 
 class ParamValidator:

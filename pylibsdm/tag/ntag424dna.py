@@ -134,7 +134,7 @@ class NTAG424DNA:
         cmact = cmac.digest()[1::2]
 
         try:
-            rapdu = self.send_command(command, key_nr.to_bytes() + encrypted + cmact, mrl, expected)
+            self.send_command(command, key_nr.to_bytes() + encrypted + cmact, mrl, expected)
         except Type4TagCommandError:
             self.reset_session()
             raise
