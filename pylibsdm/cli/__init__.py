@@ -22,6 +22,7 @@ def configure_app(
         LogLevel.INFO, help="Log level for CLI output", case_sensitive=False
     ),
     reader: str = typer.Option("usb", help="Device name of NFC reader to use"),
+    batch: bool = typer.Option(False, help="Batch operation in loop"),
 ):
     ctx.ensure_object(dict)
 
@@ -33,3 +34,4 @@ def configure_app(
     )
 
     ctx.obj["clf"] = ContactlessFrontend(reader)
+    ctx.obj["batch"] = batch

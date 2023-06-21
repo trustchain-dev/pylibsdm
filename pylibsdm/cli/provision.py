@@ -45,9 +45,16 @@ def auth(
 
         if res:
             logger.info("Authentication with key number %d successful.", key_nr)
-            raise typer.Exit(code=0)
+            if not ctx.obj["batch"]:
+                raise typer.Exit(code=0)
         else:
             logger.error("Authentication with key number %d unsuccessful: %s", key_nr, msg)
-            raise typer.Exit(code=1)
+            if not ctx.obj["batch"]:
+                raise typer.Exit(code=1)
 
-    ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_auth)
+        return True
+
+    while True:
+        # FIXME add timeout; possibly move elsewhere
+        ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_auth)
+
