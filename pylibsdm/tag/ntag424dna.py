@@ -195,8 +195,6 @@ class NTAG424DNA:
 
         key = self._keys[key_nr]
 
-        # TODO in LRP mode, do originality check here
-
         e_rndb = self.send_command(
             self.CommandHeader.AUTH_EV2_FIRST,
             pack("<H", key_nr),
