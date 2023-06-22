@@ -57,4 +57,3 @@ def auth(
     while True:
         # FIXME add timeout; possibly move elsewhere
         ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_auth)
-

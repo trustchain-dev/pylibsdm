@@ -1,11 +1,18 @@
+import logging
 from binascii import unhexlify
 from struct import pack, unpack
 from typing import Optional
+from urllib.parse import urlparse
 
+import ndef
+import nfc
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 
 from ..util import NULL_IV
+
+
+logger = logging.getLogger(__name__)
 
 
 class ParamValidator:
@@ -21,6 +28,21 @@ class ParamValidator:
 
         self.uid = None
         self.read_ctr = None
+
+    def parse_ndef(self, nfc_tag: nfc.tag.Tag):
+        logger.debug("Reading NDEF of tag: %s", str(nfc_tag))
+
+        for record in nfc_tag.ndef.records:
+            if isinstance(record, ndef.uri.UriRecord):
+                logger.info("Found URI record: %s", record.iri)
+                try:
+                    self.parse_uri(record.iri)
+                except:
+                    # FIXME explicitly handle exceptions
+                    raise
+
+    def parse_uri(self, uri: str):
+        pass
 
     @property
     def ive(self) -> bytes:

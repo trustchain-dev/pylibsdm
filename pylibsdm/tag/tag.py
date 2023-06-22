@@ -1,4 +1,4 @@
-from typing import Callable, ClassVar
+from typing import Callable
 
 import nfc
 
