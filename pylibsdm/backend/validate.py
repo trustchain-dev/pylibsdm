@@ -1,7 +1,8 @@
 import logging
+import re
 from binascii import hexlify, unhexlify
 from struct import pack, unpack
-from typing import ClassVar, Optional
+from typing import Optional
 from urllib.parse import parse_qsl, urlparse
 
 import ndef
@@ -25,6 +26,7 @@ class ParamValidator:
     param_picc_data: Optional[str]
     param_enc_data: Optional[str]
     param_cmac: Optional[str]
+    param_cmac_input: Optional[str]
 
     e_picc_data: Optional[str]
     e_file_data: Optional[str]
@@ -39,6 +41,8 @@ class ParamValidator:
     uid: Optional[bytes]
     read_ctr: Optional[int]
 
+    cmac_valid: bool
+
     def __init__(
         self,
         k_sdm_file_read: str = 16 * "00",
@@ -46,6 +50,7 @@ class ParamValidator:
         param_picc_data: Optional[str] = None,
         param_enc_data: Optional[str] = None,
         param_cmac: Optional[str] = None,
+        param_cmac_input: Optional[str] = None,
     ):
         self.k_sdm_file_read = unhexlify(k_sdm_file_read)
         self.k_sdm_meta_read = unhexlify(k_sdm_meta_read)
@@ -56,6 +61,7 @@ class ParamValidator:
         self.param_picc_data = param_picc_data
         self.param_enc_data = param_enc_data
         self.param_cmac = param_cmac
+        self.param_cmac_input = param_cmac_input
 
         self.e_picc_data = None
         self.e_file_data = None
@@ -69,6 +75,8 @@ class ParamValidator:
 
         self.uid = None
         self.read_ctr = None
+
+        self.cmac_valid = False
 
     def parse_ndef(self, nfc_tag: nfc.tag.Tag):
         logger.debug("Reading NDEF of tag: %s", str(nfc_tag))
@@ -109,9 +117,22 @@ class ParamValidator:
         if cmac := params.get(self.param_cmac):
             self.cmac = cmac
             logger.debug("Found cmac: %s", cmac)
-            self.validate_cmac()
+            if self.param_cmac_input:
+                cmac_input = self.cmac_input_from_uri(uri, self.param_cmac_input, self.param_cmac)
+            else:
+                cmac_input = None
+            self.cmac_valid = self.validate_cmac(mac_input=cmac_input)
         else:
             logger.debug("No cmac parameter found")
+
+    @staticmethod
+    def cmac_input_from_uri(uri, param_cmac_input, param_cmac) -> str:
+        i_cmac_input = (
+            re.search(f"[?&]{param_cmac_input}=", uri).start() + 2 + len(param_cmac_input)
+        )
+        i_cmac = re.search(f"[?&]{param_cmac}=", uri).start() + 2 + len(param_cmac)
+
+        return uri[i_cmac_input:i_cmac]
 
     @property
     def ive(self) -> bytes:
