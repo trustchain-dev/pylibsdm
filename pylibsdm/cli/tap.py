@@ -41,4 +41,6 @@ def validate(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["clf"].connect(rdwr={"on-connect": _do_validate})
+        ctx.obj["clf"].connect(
+            rdwr={"on-connect": _do_validate, "beep-on-connect": ctx.obj["beep"]}
+        )

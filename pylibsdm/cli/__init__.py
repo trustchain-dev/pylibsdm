@@ -25,6 +25,7 @@ def configure_app(
     ),
     reader: str = typer.Option("usb", help="Device name of NFC reader to use"),
     batch: bool = typer.Option(False, help="Batch operation in loop"),
+    beep: bool = typer.Option(True, help="Beep reader on connect"),
 ):
     ctx.ensure_object(dict)
 
@@ -37,3 +38,4 @@ def configure_app(
 
     ctx.obj["clf"] = ContactlessFrontend(reader)
     ctx.obj["batch"] = batch
+    ctx.obj["beep"] = beep
