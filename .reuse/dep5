@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: pylibsdm
+Upstream-Contact: Dominik George <nik@velocitux.com>
+Source: https://codeberg.org/velocitux/pylibsdm
+
+Files:
+  .editorconfig
+  .gitignore
+  pyproject.toml
+Copyright: Nobody in particular
+License: CC0-1.0
+Comment: Uncopyrightable config fiel or build artifact

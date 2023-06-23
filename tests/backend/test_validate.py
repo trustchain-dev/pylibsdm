@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: © 2023 Dominik George <nik@velocitux.com>
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
 """Test cases derived from examples in NXP's documentation.
 
 Reference: https://www.nxp.com/docs/en/application-note/AN12196.pdf

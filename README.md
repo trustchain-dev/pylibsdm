@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: © 2023 Dominik George <nik@velocitux.com>
+
+SPDX-License-Identifier: LGPL-2.0-or-later
+-->
+
 # pylibsdm - NFC Secure Dynamic Messaging with Python
 
 pylibsdm is a Python library for handling Secure Dynamic Messaging (SDM)
