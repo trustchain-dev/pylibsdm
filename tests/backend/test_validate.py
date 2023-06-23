@@ -19,8 +19,12 @@ def test_generate_sdm_session_keys():
 
     validator.generate_sdm_session_keys()
 
-    assert validator.k_ses_sdm_file_read_enc == unhexlify("66DA61797E23DECA5D8ECA13BBADF7A9")
-    assert validator.k_ses_sdm_file_read_mac == unhexlify("3A3E8110E05311F7A3FCF0D969BF2B48")
+    assert validator.k_ses_sdm_file_read_enc == unhexlify(
+        "66DA61797E23DECA5D8ECA13BBADF7A9"
+    )
+    assert validator.k_ses_sdm_file_read_mac == unhexlify(
+        "3A3E8110E05311F7A3FCF0D969BF2B48"
+    )
 
 
 def test_decrypt_picc_data():
@@ -46,7 +50,9 @@ def test_validate_cmac_zero_length():
     # ref: apge 15, table 5
     validator = ParamValidator()
 
-    assert validator.validate_cmac("94EED9EE65337086", "EF963FF7828658A599F3041510671E88")
+    assert validator.validate_cmac(
+        "94EED9EE65337086", "EF963FF7828658A599F3041510671E88"
+    )
 
 
 def test_validate_cmac_input():
@@ -75,7 +81,9 @@ def test_parse_uri_picc_data():
 
 def test_parse_uri_enc_data():
     # ref: page 13, table 4
-    validator = ParamValidator(param_picc_data="picc_data", param_enc_data="enc", param_cmac="cmac")
+    validator = ParamValidator(
+        param_picc_data="picc_data", param_enc_data="enc", param_cmac="cmac"
+    )
     validator.parse_uri(
         "https://my424dna.com/?picc_data=FDE4AFA99B5C820A2C1BB0F1C792D0EB&enc=94592FDE69FA06E8E3B6CA686A22842B&cmac=C48B89C17A233B2C"
     )
@@ -104,7 +112,10 @@ def test_parse_uri_cmac_zero_input():
 def test_parse_uri_cmac_param_input():
     # ref: page 17, table 6
     validator = ParamValidator(
-        param_picc_data="picc_data", param_enc_data="enc", param_cmac="cmac", param_cmac_input="enc"
+        param_picc_data="picc_data",
+        param_enc_data="enc",
+        param_cmac="cmac",
+        param_cmac_input="enc",
     )
     validator.parse_uri(
         "https://www.my424dna.com/?picc_data=FD91EC264309878BE6345CBE53BADF40&enc=CEE9A53E3E463EF1F459635736738962&cmac=ECC1E7F6C6C73BF6"

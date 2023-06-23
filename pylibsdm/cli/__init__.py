@@ -14,7 +14,9 @@ import typer
 from . import provision
 from . import tap
 
-LogLevel = StrEnum("LogLevel", {name: name for name in logging.getLevelNamesMapping().keys()})
+LogLevel = StrEnum(
+    "LogLevel", {name: name for name in logging.getLevelNamesMapping().keys()}
+)
 
 app = typer.Typer()
 app.add_typer(provision.app, name="provision")

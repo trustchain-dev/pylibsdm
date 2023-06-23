@@ -122,7 +122,9 @@ class ParamValidator:
             self.cmac = cmac
             logger.debug("Found cmac: %s", cmac)
             if self.param_cmac_input:
-                cmac_input = self.cmac_input_from_uri(uri, self.param_cmac_input, self.param_cmac)
+                cmac_input = self.cmac_input_from_uri(
+                    uri, self.param_cmac_input, self.param_cmac
+                )
             else:
                 cmac_input = None
             self.cmac_valid = self.validate_cmac(mac_input=cmac_input)
@@ -132,7 +134,9 @@ class ParamValidator:
     @staticmethod
     def cmac_input_from_uri(uri, param_cmac_input, param_cmac) -> str:
         i_cmac_input = (
-            re.search(f"[?&]{param_cmac_input}=", uri).start() + 2 + len(param_cmac_input)
+            re.search(f"[?&]{param_cmac_input}=", uri).start()
+            + 2
+            + len(param_cmac_input)
         )
         i_cmac = re.search(f"[?&]{param_cmac}=", uri).start() + 2 + len(param_cmac)
 
@@ -188,7 +192,9 @@ class ParamValidator:
             logger.info("UID not mirrored")
 
         if self.read_ctr_mirror:
-            self.read_ctr = unpack("<L", picc_data[next_offset : next_offset + 3] + b"\0")[0]
+            self.read_ctr = unpack(
+                "<L", picc_data[next_offset : next_offset + 3] + b"\0"
+            )[0]
             logger.info("Read counter mirrored: %d", self.read_ctr)
             next_offset += 3
         else:

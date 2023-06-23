@@ -15,7 +15,9 @@ class Tag:
         cls._tag_types[cls.__name__] = cls
 
     @classmethod
-    def connect_loop(cls, clf: nfc.clf.ContactlessFrontend, cb: Callable[["Tag"], bool]):
+    def connect_loop(
+        cls, clf: nfc.clf.ContactlessFrontend, cb: Callable[["Tag"], bool]
+    ):
         """Enter connect loop and call a callback for every connect."""
 
         def _wrap_connect(nfc_tag: nfc.tag.Tag) -> bool:

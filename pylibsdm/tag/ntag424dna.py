@@ -83,7 +83,9 @@ class NTAG424DNA(Tag):
         )
 
         cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, NULL_IV)
-        return cipher.encrypt(self._prefix_ivc + self.ti + pack("<H", self.cmdctr) + 8 * b"\0")
+        return cipher.encrypt(
+            self._prefix_ivc + self.ti + pack("<H", self.cmdctr) + 8 * b"\0"
+        )
 
     def send_command(
         self,
@@ -96,7 +98,9 @@ class NTAG424DNA(Tag):
             expected = self.Status.COMMAND_SUCCESSFUL
 
         LOGGER.debug(
-            "SEND: command %s, payload %s", hexlify(bytearray(command.value)), hexlify(data)
+            "SEND: command %s, payload %s",
+            hexlify(bytearray(command.value)),
+            hexlify(data),
         )
         res = self.tag.send_apdu(*command.value, data, mrl=mrl, check_status=False)
         status, rapdu = res[-2:], res[:-2]
@@ -139,7 +143,9 @@ class NTAG424DNA(Tag):
         cmact = cmac.digest()[1::2]
 
         try:
-            self.send_command(command, key_nr.to_bytes() + encrypted + cmact, mrl, expected)
+            self.send_command(
+                command, key_nr.to_bytes() + encrypted + cmact, mrl, expected
+            )
         except Type4TagCommandError:
             self.reset_session()
             raise
@@ -152,7 +158,9 @@ class NTAG424DNA(Tag):
         self.send_command(self.CommandHeader.ISO_SELECT_NDEF_APP, aid.value)
         self.reset_session()
 
-    def derive_challenge_response(self, key: bytes, e_rndb: bytes) -> tuple[bytes, bytes, bytes]:
+    def derive_challenge_response(
+        self, key: bytes, e_rndb: bytes
+    ) -> tuple[bytes, bytes, bytes]:
         cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
         rndb = cipher.decrypt(e_rndb)
         rndb_ = rndb[1:] + rndb[0].to_bytes()
@@ -164,7 +172,9 @@ class NTAG424DNA(Tag):
 
         return rnda, rndb, encrypted
 
-    def derive_session_keys(self, key: bytes, rnda: bytes, rndb: bytes) -> tuple[bytes, bytes]:
+    def derive_session_keys(
+        self, key: bytes, rnda: bytes, rndb: bytes
+    ) -> tuple[bytes, bytes]:
         sv_1 = (
             b"\xa5\x5a\x00\x01\x00\x80"
             + rnda[0:2]
@@ -230,7 +240,9 @@ class NTAG424DNA(Tag):
             raise ValueError("Received RndA does not match")
         LOGGER.debug("AUTH: RndA challenge response matches")
 
-        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(key, rnda, rndb)
+        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(
+            key, rnda, rndb
+        )
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
@@ -263,7 +275,9 @@ class NTAG424DNA(Tag):
             raise ValueError("Received RndA does not match")
         LOGGER.debug("AUTH: RndA challenge response matches")
 
-        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(key, rnda, rndb)
+        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(
+            key, rnda, rndb
+        )
         self.current_key_nr = key_nr
         LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 

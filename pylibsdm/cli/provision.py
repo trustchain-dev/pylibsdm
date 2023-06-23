@@ -36,7 +36,8 @@ def configure_provision(
 
 @app.command()
 def auth(
-    ctx: typer.Context, key_nr: int = typer.Argument(help="Key slot number to test auth with")
+    ctx: typer.Context,
+    key_nr: int = typer.Argument(help="Key slot number to test auth with"),
 ):
     def _do_auth(tag: Tag) -> bool:
         msg = "unknown failure"
@@ -52,7 +53,9 @@ def auth(
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=0)
         else:
-            logger.error("Authentication with key number %d unsuccessful: %s", key_nr, msg)
+            logger.error(
+                "Authentication with key number %d unsuccessful: %s", key_nr, msg
+            )
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=1)
 
