@@ -192,11 +192,11 @@ def test_change_key_same(sdm_tag):
     )
 
 
-def test_generate_file_settings():
-    file_data = ntag424dna.NTAG424DNA.generate_file_settings_data(
+def test_file_settings_to_bytes():
+    file_settings = ntag424dna.NDEFFileSettings(
         sdm_enabled=True,
         mirror_enabled=True,
-        comm_mode=ntag424dna.NTAG424DNA.CommMode.PLAIN,
+        comm_mode=ntag424dna.CommMode.PLAIN,
         file_ar_rw_key=0,
         file_ar_c_key=0,
         file_ar_r_key=14,
@@ -214,4 +214,4 @@ def test_generate_file_settings():
         mac_offset=67,
         mac_input_offset=67,
     )
-    assert file_data == unhexlify("4000E0C1F121200000430000430000")
+    assert file_settings.to_bytes() == unhexlify("4000E0C1F121200000430000430000")

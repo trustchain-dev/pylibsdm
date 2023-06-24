@@ -4,6 +4,7 @@
 
 import logging
 from binascii import hexlify
+from dataclasses import dataclass
 from enum import Enum
 from struct import pack
 from typing import ClassVar, Optional
@@ -20,6 +21,69 @@ from .tag import Tag
 LOGGER = logging.getLogger(__name__)
 
 
+class CommMode(Enum):
+    PLAIN = 0
+    MAC = 1
+    FULL = 2
+
+
+@dataclass
+class NDEFFileSettings:
+    sdm_enabled: bool
+    mirror_enabled: bool
+    comm_mode: CommMode
+    file_ar_rw_key: int
+    file_ar_c_key: int
+    file_ar_r_key: int
+    file_ar_w_key: int
+    uid_mirror: bool
+    read_ctr: bool
+    read_ctr_limit: bool
+    enc_file_data: bool
+    ascii_encoding: bool
+    rfu_key: int
+    ctr_ret_key: int
+    meta_read_key: int
+    file_read_key: int
+    enc_picc_data_offset: int
+    mac_offset: int
+    mac_input_offset: int
+
+    def to_bytes(self) -> bytes:
+        settings_data = b""
+
+        if (
+            self.sdm_enabled
+            and self.mirror_enabled
+            and self.comm_mode == CommMode.PLAIN
+        ):
+            settings_data += b"\x40"
+        else:
+            raise NotImplementedError(
+                "Combination not implemented due to lack of specs"
+            )
+
+        settings_data += (self.file_ar_c_key + self.file_ar_rw_key * 16).to_bytes()
+        settings_data += (self.file_ar_w_key + self.file_ar_r_key * 16).to_bytes()
+
+        flags = 0
+        flags |= self.ascii_encoding * 1
+        flags |= self.enc_file_data * 2
+        flags |= self.read_ctr_limit * 4
+        flags |= self.read_ctr * 64
+        flags |= self.uid_mirror * 128
+        settings_data += flags.to_bytes()
+
+        settings_data += (self.ctr_ret_key + self.rfu_key * 16).to_bytes()
+        settings_data += (self.file_read_key + self.meta_read_key * 16).to_bytes()
+
+        settings_data += pack("<L", self.enc_picc_data_offset)[:3]
+        settings_data += pack("<L", self.mac_offset)[:3]
+        settings_data += pack("<L", self.mac_input_offset)[:3]
+
+        return settings_data
+
+
 class NTAG424DNA(Tag):
     tag: Type4Tag
     cmdctr: int
@@ -32,11 +96,6 @@ class NTAG424DNA(Tag):
 
     _prefix_ivc: ClassVar[bytes] = b"\xa5\x5a"
     _prefix_ivr: ClassVar[bytes] = b"\x5a\xa5"
-
-    class CommMode(Enum):
-        PLAIN = 0
-        MAC = 1
-        FULL = 2
 
     class CommandHeader(Enum):
         ISO_SELECT_NDEF_APP = (0x00, 0xA4, 0x04, 0x0C)
@@ -302,54 +361,3 @@ class NTAG424DNA(Tag):
         )
 
         return True
-
-    @staticmethod
-    def generate_file_settings_data(
-        sdm_enabled: bool,
-        mirror_enabled: bool,
-        comm_mode: "CommMode",
-        file_ar_rw_key: int,
-        file_ar_c_key: int,
-        file_ar_r_key: int,
-        file_ar_w_key: int,
-        uid_mirror: bool,
-        read_ctr: bool,
-        read_ctr_limit: bool,
-        enc_file_data: bool,
-        ascii_encoding: bool,
-        rfu_key: int,
-        ctr_ret_key: int,
-        meta_read_key: int,
-        file_read_key: int,
-        enc_picc_data_offset: int,
-        mac_offset: int,
-        mac_input_offset: int,
-    ) -> bytes:
-        settings_data = b""
-
-        if sdm_enabled and mirror_enabled and comm_mode == NTAG424DNA.CommMode.PLAIN:
-            settings_data += b"\x40"
-        else:
-            raise NotImplementedError(
-                "Combination not implemented due to lack of specs"
-            )
-
-        settings_data += (file_ar_c_key + file_ar_rw_key * 16).to_bytes()
-        settings_data += (file_ar_w_key + file_ar_r_key * 16).to_bytes()
-
-        flags = 0
-        flags |= ascii_encoding * 1
-        flags |= enc_file_data * 2
-        flags |= read_ctr_limit * 4
-        flags |= read_ctr * 64
-        flags |= uid_mirror * 128
-        settings_data += flags.to_bytes()
-
-        settings_data += (ctr_ret_key + rfu_key * 16).to_bytes()
-        settings_data += (file_read_key + meta_read_key * 16).to_bytes()
-
-        settings_data += pack("<L", enc_picc_data_offset)[:3]
-        settings_data += pack("<L", mac_offset)[:3]
-        settings_data += pack("<L", mac_input_offset)[:3]
-
-        return settings_data
