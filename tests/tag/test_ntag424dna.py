@@ -175,14 +175,14 @@ def test_authenticate_aes_non_first_key_0(sdm_tag):
     assert sdm_tag.k_ses_auth_mac == unhexlify("5529860B2FC5FB6154B7F28361D30BF9")
 
 
-def test_change_key_same(sdm_tag):
+def test_change_key(sdm_tag):
     # ref: page 41, table 27
     sdm_tag.k_ses_auth_enc = unhexlify("4CF3CB41A22583A61E89B158D252FC53")
     sdm_tag.k_ses_auth_mac = unhexlify("5529860B2FC5FB6154B7F28361D30BF9")
     sdm_tag.ti = unhexlify("7614281A")
     sdm_tag.cmdctr = 3
 
-    res = sdm_tag.change_key_same(
+    res = sdm_tag.change_key(
         0, unhexlify("5004BF991F408672B1EF00F08F9E8647"), auth_first=False
     )
     assert res

@@ -2,6 +2,11 @@
 #
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
+"""Implementation of tag management fro the NXP NTAG424 DNA.
+
+Reference: https://www.nxp.com/docs/en/data-sheet/NT4H2421Tx.pdf
+"""
+
 import logging
 from binascii import hexlify
 from dataclasses import dataclass
@@ -155,8 +160,10 @@ class NTAG424DNA(Tag):
         AUTH_AES_NON_FIRST = (0x90, 0x77, 0x00, 0x00)
         ADDITIONAL_DF = (0x90, 0xAF, 0x00, 0x00)
         CHANGE_KEY = (0x90, 0xC4, 0x00, 0x00)
+        GET_FILE_SETTINGS = (0x90, 0xF5, 0x00, 0x00)
 
     class Status(Enum):
+        # FIXME implement table 11.3 of https://www.nxp.com/docs/en/data-sheet/NT4H2421Tx.pdf
         COMMAND_SUCCESSFUL = b"\x90\x00"
         OK = b"\x91\x00"
         ADDITIONAL_DF_EXPECTED = b"\x91\xAF"
@@ -399,13 +406,13 @@ class NTAG424DNA(Tag):
 
         return True
 
-    def change_key_same(
+    def change_key(
         self, key_nr: int, new_key: bytes, version: int = 1, auth_first: bool = True
     ) -> bool:
         LOGGER.debug("Changing key nr %d using same key for auth", key_nr)
 
         if auth_first:
-            self.authenticate_ev2_first(key_nr)
+            self.authenticate_ev2_first(0)
 
         plain_input = pad(new_key + version.to_bytes(), 16, style="iso7816")
         self.send_command_secure(
@@ -413,3 +420,11 @@ class NTAG424DNA(Tag):
         )
 
         return True
+
+    def get_file_settings(self, file_nr: int) -> FileSettings:
+        settings_data = self.send_command(
+            self.CommandHeader.GET_FILE_SETTINGS,
+            file_nr.to_bytes(),
+            expected=self.Status.OK,
+        )
+        return FileSettings.from_rapdu_data(settings_data)

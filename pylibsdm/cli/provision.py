@@ -64,3 +64,27 @@ def auth(
     while True:
         # FIXME add timeout; possibly move elsewhere
         ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_auth)
+
+
+@app.command()
+def get_file_settings(
+    ctx: typer.Context,
+    file_nr: int = typer.Argument(help="File number to retrieve settings for"),
+):
+    def _do_get_file_settings(tag: Tag) -> bool:
+        try:
+            file_settings = tag.get_file_settings(file_nr)
+            logger.info("Retrieved file settings: %s", file_settings.asdict())
+            if not ctx.obj["batch"]:
+                raise typer.Exit(code=0)
+        except nfc.tag.TagCommandError as exc:
+            logger.error("Could not retrieve file settings: %s", str(exc))
+            msg = str(exc)
+            if not ctx.obj["batch"]:
+                raise typer.Exit(code=1)
+
+        return True
+
+    while True:
+        # FIXME add timeout; possibly move elsewhere
+        ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_get_file_settings)
