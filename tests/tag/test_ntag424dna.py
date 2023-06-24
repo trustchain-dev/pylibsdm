@@ -192,8 +192,9 @@ def test_change_key_same(sdm_tag):
     )
 
 
-def test_file_settings_to_bytes():
-    file_settings = ntag424dna.NDEFFileSettings(
+def test_file_settings_to_capdu_data():
+    # ref: page 34, table 19
+    file_settings = ntag424dna.FileSettings(
         sdm_enabled=True,
         mirror_enabled=True,
         comm_mode=ntag424dna.CommMode.PLAIN,
@@ -214,4 +215,12 @@ def test_file_settings_to_bytes():
         mac_offset=67,
         mac_input_offset=67,
     )
-    assert file_settings.to_bytes() == unhexlify("4000E0C1F121200000430000430000")
+    assert file_settings.to_capdu_data() == unhexlify("4000E0C1F121200000430000430000")
+
+
+def test_file_settings_from_rapdu_data():
+    # ref: page 26, table 12
+    file_settings = ntag424dna.FileSettings.from_rapdu_data(
+        unhexlify("004000E0000100C1F1212000004300009100")
+    )
+    # FIXME add tests for values

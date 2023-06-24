@@ -6,8 +6,8 @@ import logging
 from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum
-from struct import pack
-from typing import ClassVar, Optional
+from struct import pack, unpack
+from typing import ClassVar, Optional, Self
 
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
@@ -28,7 +28,7 @@ class CommMode(Enum):
 
 
 @dataclass
-class NDEFFileSettings:
+class FileSettings:
     sdm_enabled: bool
     mirror_enabled: bool
     comm_mode: CommMode
@@ -45,11 +45,62 @@ class NDEFFileSettings:
     ctr_ret_key: int
     meta_read_key: int
     file_read_key: int
-    enc_picc_data_offset: int
-    mac_offset: int
-    mac_input_offset: int
+    enc_picc_data_offset: Optional[int] = None
+    mac_offset: Optional[int] = None
+    mac_input_offset: Optional[int] = None
 
-    def to_bytes(self) -> bytes:
+    file_type: Optional[int] = 0
+    file_size: Optional[int] = 256
+
+    @classmethod
+    def from_rapdu_data(cls, settings_data: bytes) -> Self:
+        fields = {}
+
+        fields["file_type"] = settings_data[0]
+
+        file_options = settings_data[1].to_bytes()
+        if file_options != b"\x40":
+            raise NotImplementedError("File options not supported due to lack of specs")
+        else:
+            fields["sdm_enabled"] = True
+            fields["mirror_enabled"] = True
+            fields["comm_mode"] = CommMode.PLAIN
+
+        access_rights = settings_data[2:4]
+        fields["file_ar_rw_key"] = access_rights[0] >> 4
+        fields["file_ar_c_key"] = access_rights[0] % 15
+        fields["file_ar_r_key"] = access_rights[1] >> 4
+        fields["file_ar_w_key"] = access_rights[1] % 15
+
+        # FIXME find out how to get from 8 to 256 really
+        fields["file_size"] = unpack("<L", settings_data[4:7] + b"\0") * 32
+
+        # FIXME really?
+        sdm_options = settings_data[7]
+        fields["uid_mirror"] = bool(sdm_options & 128)
+        fields["read_ctr"] = bool(sdm_options & 64)
+        fields["read_ctr_limit"] = bool(sdm_options & 4)
+        fields["enc_file_data"] = bool(sdm_options & 2)
+        fields["ascii_encoding"] = bool(sdm_options & 1)
+
+        sdm_access_rights = settings_data[8:10]
+        fields["rfu_key"] = sdm_access_rights[0] >> 4
+        fields["ctr_ret_key"] = sdm_access_rights[0] % 15
+        fields["meta_read_key"] = sdm_access_rights[1] >> 4
+        fields["file_read_key"] = sdm_access_rights[1] % 15
+
+        next_offset = 10
+        # FIXME implement offset parsing; missing due to lack of specs
+        # if fields["uid_mirror"]:
+        #    fields["uid_offset"] = unpack("<H", settings_data[next_offset:next_offset+3])
+        #    next_offset += 3
+        # if fields["read_ctr"]:
+        #    fields["read_ctr_offset"] = unpack("<H", settings_data[next_offset:next_offset+3])
+        #    next_offset += 3
+
+        return cls(**fields)
+
+    def to_capdu_data(self) -> bytes:
         settings_data = b""
 
         if (
@@ -66,6 +117,7 @@ class NDEFFileSettings:
         settings_data += (self.file_ar_c_key + self.file_ar_rw_key * 16).to_bytes()
         settings_data += (self.file_ar_w_key + self.file_ar_r_key * 16).to_bytes()
 
+        # FIXME really?
         flags = 0
         flags |= self.ascii_encoding * 1
         flags |= self.enc_file_data * 2
