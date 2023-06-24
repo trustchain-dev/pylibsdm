@@ -190,3 +190,28 @@ def test_change_key_same(sdm_tag):
         "90C400002900C0EB4DEEFEDDF0B513A03A95A75491818580503190D4D05053FF75668A01D6FDA6610234BDED643200"
         in sdm_tag.tag.apdus_called
     )
+
+
+def test_generate_file_settings():
+    file_data = ntag424dna.NTAG424DNA.generate_file_settings_data(
+        sdm_enabled=True,
+        mirror_enabled=True,
+        comm_mode=ntag424dna.NTAG424DNA.CommMode.PLAIN,
+        file_ar_rw_key=0,
+        file_ar_c_key=0,
+        file_ar_r_key=14,
+        file_ar_w_key=0,
+        uid_mirror=True,
+        read_ctr=True,
+        read_ctr_limit=False,
+        enc_file_data=False,
+        ascii_encoding=True,
+        rfu_key=15,
+        ctr_ret_key=1,
+        meta_read_key=2,
+        file_read_key=1,
+        enc_picc_data_offset=32,
+        mac_offset=67,
+        mac_input_offset=67,
+    )
+    assert file_data == unhexlify("4000E0C1F121200000430000430000")
