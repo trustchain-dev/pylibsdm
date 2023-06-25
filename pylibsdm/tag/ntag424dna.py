@@ -50,7 +50,7 @@ class AccessCondition(Enum):
 
 
 @dataclass
-class AccessConditionSet:
+class AccessRights:
     read: AccessCondition
     write: AccessCondition
     read_write: AccessCondition
@@ -72,118 +72,141 @@ class AccessConditionSet:
         return cls(read, write, read_write, change)
 
 
+@dataclass
+class FileOption:
+    sdm_enabled: bool
+    comm_mode: CommMode
+
+    def to_bytes(self) -> bytes:
+        # ref: page 75, table 73
+        data = 0
+        data |= int(self.sdm_enabled) * 32
+        data |= self.comm_mode.value
+        return data.to_bytes()
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
+        sdm_enabled = bool(data[0] & 32)
+        comm_mode = CommMode(data[0] & 3)
+        return cls(sdm_enabled, comm_mode)
+
+
+@dataclass
+class SDMOptions:
+    uid: bool
+    read_ctr: bool
+    read_ctr_limit: bool
+    enc_file_data: bool
+    tt_status: bool
+    ascii_encoding: bool = True
+
+    def to_bytes(self) -> bytes:
+        # ref: page 71, table 69
+        value = (
+            self.ascii_encoding * 1
+            + self.tt_status * 8
+            + self.enc_file_data * 16
+            + self.read_ctr_limit * 32
+            + self.read_ctr * 64
+            + self.uid * 128
+        )
+        return value.to_bytes()
+
+    @classmethod
+    def from_bytes(self, data: bytes) -> Self:
+        ascii_encoding = bool(data[0] & 1)
+        tt_status = bool(data[0] & 8)
+        enc_file_data = bool(data[0] & 16)
+        read_ctr_limit = bool(data[0] & 32)
+        read_ctr = bool(data[0] & 64)
+        uid = bool(data[0] & 128)
+        return cls(
+            uid, read_ctr, read_ctr_limit, enc_file_data, tt_status, ascii_encoding
+        )
+
+
+@dataclass
+class SDMAccessRights:
+    meta_read: AccessCondition
+    file_read: AccessCondition
+    ctr_ret: AccessCondition
+
+    def to_bytes(self):
+        # ref: page 71, table 69
+        b1 = self.meta_read.value * 16 + self.file_read.value
+        b2 = 15 * 16 + self.ctr_ret.value
+        return b1.to_bytes() + b2.to_bytes()
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
+        meta_read = AccessCondition(data[0] >> 4)
+        file_read = AccessCondition(data[0] & 15)
+        ctr_ret = AccessCondition(data[1] & 15)
+
+        return cls(meta_read, file_read, ctr_ret)
+
+
 # FIXME maybe implement standard files, table 8 et al
 
 
 @dataclass
 class FileSettings:
-    sdm_enabled: bool
-    mirror_enabled: bool
-    comm_mode: CommMode
-    file_ar_rw_key: int
-    file_ar_c_key: int
-    file_ar_r_key: int
-    file_ar_w_key: int
-    uid_mirror: bool
-    read_ctr: bool
-    read_ctr_limit: bool
-    enc_file_data: bool
-    ascii_encoding: bool
-    rfu_key: int
-    ctr_ret_key: int
-    meta_read_key: int
-    file_read_key: int
-    enc_picc_data_offset: Optional[int] = None
-    mac_offset: Optional[int] = None
+    file_option: FileOption
+    access_rights: AccessRights
+    sdm_options: Optional[SDMOptions] = None
+    sdm_access_rights: Optional[SDMAccessRights] = None
+
+    uid_offset: Optional[int] = None
+    read_ctr_offset: Optional[int] = None
+    picc_data_offset: Optional[int] = None
+    tt_status_offset: Optional[int] = None
     mac_input_offset: Optional[int] = None
+    enc_offset: Optional[int] = None
+    enc_length: Optional[int] = None
+    mac_offset: Optional[int] = None
+    read_ctr_limit: Optional[int] = None
 
-    file_type: Optional[int] = 0
-    file_size: Optional[int] = 256
+    def to_bytes(self) -> bytes:
+        # ref: page 70, table 69
+        data = b""
 
-    @classmethod
-    def from_rapdu_data(cls, settings_data: bytes) -> Self:
-        # ref: page 75, table 73
-        fields = {}
+        data += self.file_option.to_bytes()
+        data += self.access_rights.to_bytes()
 
-        fields["file_type"] = settings_data[0]
+        if self.file_option.sdm_enabled:
+            if self.sdm_options is None or self.sdm_access_rights is None:
+                raise TypeError("SDM enabled but options or AR unset")
+            data += self.sdm_options.to_bytes()
+            data += self.sdm_access_rights.to_bytes()
 
-        file_options = settings_data[1].to_bytes()
-        if file_options != b"\x40":
-            raise NotImplementedError("File options not supported due to lack of specs")
-        else:
-            fields["sdm_enabled"] = True
-            fields["mirror_enabled"] = True
-            fields["comm_mode"] = CommMode.PLAIN
+            # FIXME implement offset/length validation/calculation
+            if (
+                self.sdm_options.uid
+                and self.sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            ):
+                data += pack("<L", self.uid_offset)[:3]
+            if (
+                self.sdm_options.read_ctr
+                and self.sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            ):
+                data += pack("<L", self.read_ctr_offset)[:3]
+            if (
+                self.sdm_access_rights.meta_read.value
+                < AccessCondition.FREE_ACCESS.value
+            ):
+                data += pack("<L", self.picc_data_offset)[:3]
+            if self.sdm_options.tt_status:
+                data += pack("<L", self.tt_status_offset)[:3]
+            if self.sdm_access_rights.file_read != AccessCondition.NO_ACCESS:
+                data += pack("<L", self.mac_input_offset)[:3]
+                if self.sdm_options.enc_file_data:
+                    data += pack("<L", self.enc_offset)[:3]
+                    data += pack("<L", self.enc_length)[:3]
+                data += pack("<L", self.mac_offset)[:3]
+            if self.sdm_options.read_ctr_limit:
+                data += pack("<L", self.read_ctr_limit)[:3]
 
-        access_rights = settings_data[2:4]
-        fields["file_ar_rw_key"] = access_rights[0] >> 4
-        fields["file_ar_c_key"] = access_rights[0] % 15
-        fields["file_ar_r_key"] = access_rights[1] >> 4
-        fields["file_ar_w_key"] = access_rights[1] % 15
-
-        # FIXME find out how to get from 8 to 256 really
-        fields["file_size"] = unpack("<L", settings_data[4:7] + b"\0") * 32
-
-        # FIXME really?
-        sdm_options = settings_data[7]
-        fields["uid_mirror"] = bool(sdm_options & 128)
-        fields["read_ctr"] = bool(sdm_options & 64)
-        fields["read_ctr_limit"] = bool(sdm_options & 4)
-        fields["enc_file_data"] = bool(sdm_options & 2)
-        fields["ascii_encoding"] = bool(sdm_options & 1)
-
-        sdm_access_rights = settings_data[8:10]
-        fields["rfu_key"] = sdm_access_rights[0] >> 4
-        fields["ctr_ret_key"] = sdm_access_rights[0] % 15
-        fields["meta_read_key"] = sdm_access_rights[1] >> 4
-        fields["file_read_key"] = sdm_access_rights[1] % 15
-
-        next_offset = 10
-        # FIXME implement offset parsing; missing due to lack of specs
-        # if fields["uid_mirror"]:
-        #    fields["uid_offset"] = unpack("<H", settings_data[next_offset:next_offset+3])
-        #    next_offset += 3
-        # if fields["read_ctr"]:
-        #    fields["read_ctr_offset"] = unpack("<H", settings_data[next_offset:next_offset+3])
-        #    next_offset += 3
-
-        return cls(**fields)
-
-    def to_capdu_data(self) -> bytes:
-        # ref: page 70, chapter 69
-        settings_data = b""
-
-        if (
-            self.sdm_enabled
-            and self.mirror_enabled
-            and self.comm_mode == CommMode.PLAIN
-        ):
-            settings_data += b"\x40"
-        else:
-            raise NotImplementedError(
-                "Combination not implemented due to lack of specs"
-            )
-
-        settings_data += (self.file_ar_c_key + self.file_ar_rw_key * 16).to_bytes()
-        settings_data += (self.file_ar_w_key + self.file_ar_r_key * 16).to_bytes()
-
-        # FIXME really?
-        flags = 0
-        flags |= self.ascii_encoding * 1
-        flags |= self.enc_file_data * 2
-        flags |= self.read_ctr_limit * 4
-        flags |= self.read_ctr * 64
-        flags |= self.uid_mirror * 128
-        settings_data += flags.to_bytes()
-
-        settings_data += (self.ctr_ret_key + self.rfu_key * 16).to_bytes()
-        settings_data += (self.file_read_key + self.meta_read_key * 16).to_bytes()
-
-        settings_data += pack("<L", self.enc_picc_data_offset)[:3]
-        settings_data += pack("<L", self.mac_offset)[:3]
-        settings_data += pack("<L", self.mac_input_offset)[:3]
-
-        return settings_data
+        return data
 
 
 class NTAG424DNA(Tag):
