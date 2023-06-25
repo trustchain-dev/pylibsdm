@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 class ParamValidator:
+    # FIXME probably move most into NTAG 424 DNA class;
+    #  reconsider whoe code structure
     k_sdm_file_read: bytes
     k_sdm_meta_read: bytes
 
@@ -177,6 +179,8 @@ class ParamValidator:
         cipher = AES.new(self.k_sdm_meta_read, AES.MODE_CBC, NULL_IV)
         picc_data = cipher.decrypt(unhexlify(e_picc_data))
 
+        # FIXME refactor into dataclass; probably move into tag class
+        #  ref for NTAG 424 DNA: page 38, table 21
         picc_data_tag = ord(picc_data[0:1])
 
         self.uid_mirror = bool(picc_data_tag & 128)

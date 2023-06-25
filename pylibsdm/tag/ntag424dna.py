@@ -10,14 +10,14 @@ Reference: https://www.nxp.com/docs/en/data-sheet/NT4H2421Tx.pdf
 import logging
 from binascii import hexlify
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntEnum
 from struct import pack, unpack
 from typing import ClassVar, Optional, Self
 
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 from Crypto.Random import get_random_bytes
-from Crypto.Util.Padding import pad
+from Crypto.Util.Padding import pad, unpad
 from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
 
 from ..util import NULL_IV, bytes_xor
@@ -26,10 +26,53 @@ from .tag import Tag
 LOGGER = logging.getLogger(__name__)
 
 
-class CommMode(Enum):
+class CommMode(IntEnum):
+    # ref: page 13, table 12
     PLAIN = 0
     MAC = 1
     FULL = 2
+
+
+class FileType(IntEnum):
+    # ref: page 11, table 6
+    STANDARD_DATA = 0
+
+
+class AccessCondition(Enum):
+    # ref: page 11, table 6
+    KEY_0 = 0
+    KEY_1 = 1
+    KEY_2 = 2
+    KEY_3 = 3
+    KEY_4 = 4
+    FREE_ACCESS = 0xE
+    NO_ACCESS = 0xF
+
+
+@dataclass
+class AccessConditionSet:
+    read: AccessCondition
+    write: AccessCondition
+    read_write: AccessCondition
+    change: AccessCondition
+
+    def to_bytes(self):
+        # ref: page 11, table 7
+        b1 = self.read_write.value * 16 + self.change.value
+        b2 = self.read.value * 16 + self.write.value
+        return b1.to_bytes() + b2.to_bytes()
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
+        read = AccessCondition(data[1] >> 4)
+        write = AccessCondition(data[1] & 15)
+        read_write = AccessCondition(data[0] >> 4)
+        change = AccessCondition(data[0] & 15)
+
+        return cls(read, write, read_write, change)
+
+
+# FIXME maybe implement standard files, table 8 et al
 
 
 @dataclass
@@ -59,6 +102,7 @@ class FileSettings:
 
     @classmethod
     def from_rapdu_data(cls, settings_data: bytes) -> Self:
+        # ref: page 75, table 73
         fields = {}
 
         fields["file_type"] = settings_data[0]
@@ -106,6 +150,7 @@ class FileSettings:
         return cls(**fields)
 
     def to_capdu_data(self) -> bytes:
+        # ref: page 70, chapter 69
         settings_data = b""
 
         if (
@@ -155,6 +200,8 @@ class NTAG424DNA(Tag):
     _prefix_ivr: ClassVar[bytes] = b"\x5a\xa5"
 
     class CommandHeader(Enum):
+        # ref: page 47, table 22
+        # FIXME complete, if that makes sense
         ISO_SELECT_NDEF_APP = (0x00, 0xA4, 0x04, 0x0C)
         AUTH_EV2_FIRST = (0x90, 0x71, 0x00, 0x00)
         AUTH_AES_NON_FIRST = (0x90, 0x77, 0x00, 0x00)
@@ -163,7 +210,8 @@ class NTAG424DNA(Tag):
         GET_FILE_SETTINGS = (0x90, 0xF5, 0x00, 0x00)
 
     class Status(Enum):
-        # FIXME implement table 11.3 of https://www.nxp.com/docs/en/data-sheet/NT4H2421Tx.pdf
+        # ref: page 48, table 23
+        # FIXME complete, if that makes sense
         COMMAND_SUCCESSFUL = b"\x90\x00"
         OK = b"\x91\x00"
         ADDITIONAL_DF_EXPECTED = b"\x91\xAF"
@@ -179,7 +227,7 @@ class NTAG424DNA(Tag):
 
     def reset_keys(self):
         LOGGER.debug("Resetting keys to NULL")
-        self._keys = [16 * b"\0"] * 4
+        self._keys = [16 * b"\0"] * 5
 
     def reset_session(self):
         LOGGER.debug("Resetting transaction id, command counter and session keys")
@@ -326,6 +374,7 @@ class NTAG424DNA(Tag):
         return k_ses_auth_enc, k_ses_auth_mac
 
     def authenticate_ev2_first(self, key_nr: int = 0) -> bool:
+        # ref: page 50, chapter 11.4.1
         self.select_application(self.Application.NDEF)
         self.reset_session()
 
@@ -371,44 +420,34 @@ class NTAG424DNA(Tag):
 
         return True
 
-    def authenticate_aes_non_first(self, key_nr: int = 0) -> bool:
-        self.select_application(self.Application.NDEF)
-        self.reset_session()
+    def authenticate_ev2_non_first(self, key_nr: int = 0) -> bool:
+        # ref: page 53, capter 11.4.2
+        raise NotImplementedError()
 
-        LOGGER.debug("AUTH: Doing AES authentication with key nr %d", key_nr)
+    def authenticate_lrp_first(self, key_nr: int = 0) -> bool:
+        # ref: page 55, capter 11.4.3
+        raise NotImplementedError()
 
-        key = self._keys[key_nr]
+    def authenticate_lrp_non_first(self, key_nr: int = 0) -> bool:
+        # ref: page 57, capter 11.4.4
+        raise NotImplementedError()
 
-        e_rndb = self.send_command(
-            self.CommandHeader.AUTH_AES_NON_FIRST,
-            key_nr.to_bytes(),
-            expected=self.Status.ADDITIONAL_DF_EXPECTED,
-        )
+    def set_configuration(self):
+        # ref: page 59, chapter 11.5.1
+        raise NotImplementedError()
 
-        rnda, rndb, encrypted = self.derive_challenge_response(key, e_rndb)
-        e_rnda_ = self.send_command(
-            self.CommandHeader.ADDITIONAL_DF, encrypted, expected=self.Status.OK
-        )
+    def get_version(self):
+        # ref: page 63, chapter 11.5.2
+        raise NotImplementedError()
 
-        cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
-        rnda_ = cipher.decrypt(e_rnda_)
-
-        rnda_recv = rnda_[-1].to_bytes() + rnda_[:-1]
-        if rnda_recv != rnda:
-            raise ValueError("Received RndA does not match")
-        LOGGER.debug("AUTH: RndA challenge response matches")
-
-        self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(
-            key, rnda, rndb
-        )
-        self.current_key_nr = key_nr
-        LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
-
-        return True
+    def get_card_uid(self):
+        # ref: page 66, chapter 11.5.2
+        raise NotImplementedError()
 
     def change_key(
         self, key_nr: int, new_key: bytes, version: int = 1, auth_first: bool = True
     ) -> bool:
+        # ref: page 67, chapter 11.6.1
         LOGGER.debug("Changing key nr %d using same key for auth", key_nr)
 
         if auth_first:
@@ -421,10 +460,22 @@ class NTAG424DNA(Tag):
 
         return True
 
+    def get_key_version(self):
+        # ref: page 69, chapter 11.6.2
+        raise NotImplementedError()
+
     def get_file_settings(self, file_nr: int) -> FileSettings:
-        settings_data = self.send_command(
-            self.CommandHeader.GET_FILE_SETTINGS,
-            file_nr.to_bytes(),
-            expected=self.Status.OK,
-        )
-        return FileSettings.from_rapdu_data(settings_data)
+        # ref: page 75, chapter 11.7.2
+        raise NotImplementedError()
+
+    def change_file_settings(self):
+        # ref: page 70, chapter 11.7.1
+        raise NotImplementedError()
+
+    def read_data(self):
+        # ref: page 79, chapter 11.8.1
+        raise NotImplementedError()
+
+    def write_data(self):
+        # ref: page 81, chapter 11.8.2
+        raise NotImplementedError()

@@ -60,15 +60,25 @@ class MockType4Tag:
         return rapdu
 
 
+def test_access_condition_from_bytes():
+    # ref: page 26
+    acs = ntag424dna.AccessConditionSet.from_bytes(unhexlify("00E0"))
+    assert acs.read_write == ntag424dna.AccessCondition.KEY_0
+    assert acs.change == ntag424dna.AccessCondition.KEY_0
+    assert acs.read == ntag424dna.AccessCondition.FREE_ACCESS
+    assert acs.write == ntag424dna.AccessCondition.KEY_0
+
+
 def test_reset_keys(sdm_tag):
-    assert sdm_tag._keys == [16 * b"\0"] * 4
+    assert sdm_tag._keys == [16 * b"\0"] * 5
     sdm_tag.set_key(0, b"0123456789abcdef")
     sdm_tag.set_key(1, b"0123456789abcdef")
     sdm_tag.set_key(2, b"0123456789abcdef")
     sdm_tag.set_key(3, b"0123456789abcdef")
-    assert sdm_tag._keys == [b"0123456789abcdef"] * 4
+    sdm_tag.set_key(4, b"0123456789abcdef")
+    assert sdm_tag._keys == [b"0123456789abcdef"] * 5
     sdm_tag.reset_keys()
-    assert sdm_tag._keys == [16 * b"\0"] * 4
+    assert sdm_tag._keys == [16 * b"\0"] * 5
 
 
 def test_reset_session(sdm_tag):
@@ -84,9 +94,9 @@ def test_reset_session(sdm_tag):
     assert sdm_tag.k_ses_auth_mac == 16 * b"\0"
 
 
-@pytest.mark.parametrize("key_nr", [0, 1, 2, 3])
+@pytest.mark.parametrize("key_nr", [0, 1, 2, 3, 4])
 def test_set_key(sdm_tag, key_nr):
-    expected = [16 * b"\0"] * 4
+    expected = [16 * b"\0"] * 5
     expected[key_nr] = 16 * b"\xAF"
 
     sdm_tag.set_key(key_nr, 16 * b"\xAF")
@@ -155,24 +165,6 @@ def test_authenticate_ev2_first_key_3(sdm_tag):
     assert sdm_tag.pcdcap2 == unhexlify("000000000000")
     assert sdm_tag.k_ses_auth_enc == unhexlify("7A93D6571E4B180FCA6AC90C9A7488D4")
     assert sdm_tag.k_ses_auth_mac == unhexlify("FC4AF159B62E549B5812394CAB1918CC")
-
-
-def test_authenticate_aes_non_first_key_0(sdm_tag):
-    # ref: page 39, table 24
-    with mock.patch(
-        "pylibsdm.tag.ntag424dna.get_random_bytes",
-        return_value=unhexlify("60BE759EDA560250AC57CDDC11743CF6"),
-    ):
-        sdm_tag.authenticate_aes_non_first()
-
-    assert sdm_tag.tag.apdus_called == [
-        "00A4040C07D276000085010100",
-        "90770000010000",
-        "90AF000020BE7D45753F2CAB85F34BC60CE58B940763FE969658A532DF6D95EA2773F6E99100",
-    ]
-    assert (sdm_tag.ti, sdm_tag.cmdctr, sdm_tag.current_key_nr) == (4 * b"\0", 0, 0)
-    assert sdm_tag.k_ses_auth_enc == unhexlify("4CF3CB41A22583A61E89B158D252FC53")
-    assert sdm_tag.k_ses_auth_mac == unhexlify("5529860B2FC5FB6154B7F28361D30BF9")
 
 
 def test_change_key(sdm_tag):
