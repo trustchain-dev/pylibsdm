@@ -60,9 +60,9 @@ class MockType4Tag:
         return rapdu
 
 
-def test_access_condition_from_bytes():
+def test_access_rights_from_bytes():
     # ref: page 26
-    acs = ntag424dna.AccessConditionSet.from_bytes(unhexlify("00E0"))
+    acs = ntag424dna.AccessRights.from_bytes(unhexlify("00E0"))
     assert acs.read_write == ntag424dna.AccessCondition.KEY_0
     assert acs.change == ntag424dna.AccessCondition.KEY_0
     assert acs.read == ntag424dna.AccessCondition.FREE_ACCESS
@@ -184,35 +184,34 @@ def test_change_key(sdm_tag):
     )
 
 
-def test_file_settings_to_capdu_data():
-    # ref: page 34, table 19
-    file_settings = ntag424dna.FileSettings(
-        sdm_enabled=True,
-        mirror_enabled=True,
-        comm_mode=ntag424dna.CommMode.PLAIN,
-        file_ar_rw_key=0,
-        file_ar_c_key=0,
-        file_ar_r_key=14,
-        file_ar_w_key=0,
-        uid_mirror=True,
-        read_ctr=True,
-        read_ctr_limit=False,
-        enc_file_data=False,
-        ascii_encoding=True,
-        rfu_key=15,
-        ctr_ret_key=1,
-        meta_read_key=2,
-        file_read_key=1,
-        enc_picc_data_offset=32,
-        mac_offset=67,
-        mac_input_offset=67,
-    )
-    assert file_settings.to_capdu_data() == unhexlify("4000E0C1F121200000430000430000")
-
-
-def test_file_settings_from_rapdu_data():
+def test_file_settings_from_bytes():
     # ref: page 26, table 12
-    file_settings = ntag424dna.FileSettings.from_rapdu_data(
-        unhexlify("004000E0000100C1F1212000004300009100")
+    file_settings = ntag424dna.FileSettings.from_bytes(
+        unhexlify("004000E0000100C1F121200000430000")
     )
-    # FIXME add tests for values
+
+    assert file_settings.file_type == ntag424dna.FileType.STANDARD_DATA
+    assert file_settings.file_size == 256
+
+    assert file_settings.file_option.sdm_enabled
+    assert file_settings.file_option.comm_mode == ntag424dna.CommMode.PLAIN
+
+    assert file_settings.access_rights.read_write == ntag424dna.AccessCondition.KEY_0
+    assert file_settings.access_rights.change == ntag424dna.AccessCondition.KEY_0
+    assert file_settings.access_rights.read == ntag424dna.AccessCondition.FREE_ACCESS
+    assert file_settings.access_rights.write == ntag424dna.AccessCondition.KEY_0
+
+    assert file_settings.sdm_options is not None
+    assert file_settings.sdm_access_rights is not None
+
+    assert file_settings.sdm_options.uid
+    assert file_settings.sdm_options.read_ctr
+    assert file_settings.sdm_options.ascii_encoding
+    assert not file_settings.sdm_options.read_ctr_limit
+
+    assert file_settings.sdm_access_rights.ctr_ret == ntag424dna.AccessCondition.KEY_1
+    assert file_settings.sdm_access_rights.meta_read == ntag424dna.AccessCondition.KEY_2
+    assert file_settings.sdm_access_rights.file_read == ntag424dna.AccessCondition.KEY_1
+
+    assert file_settings.uid_offset == 32
+    assert file_settings.read_ctr_offset == 67

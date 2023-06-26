@@ -12,6 +12,7 @@ from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from struct import pack, unpack
+from types import ClassMethodDescriptorType
 from typing import ClassVar, Optional, Self
 
 from Crypto.Cipher import AES
@@ -19,6 +20,7 @@ from Crypto.Hash import CMAC
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
+from pytest import xfail
 
 from ..util import NULL_IV, bytes_xor
 from .tag import Tag
@@ -80,13 +82,13 @@ class FileOption:
     def to_bytes(self) -> bytes:
         # ref: page 75, table 73
         data = 0
-        data |= int(self.sdm_enabled) * 32
+        data |= int(self.sdm_enabled) * 64
         data |= self.comm_mode.value
         return data.to_bytes()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        sdm_enabled = bool(data[0] & 32)
+        sdm_enabled = bool(data[0] & 64)
         comm_mode = CommMode(data[0] & 3)
         return cls(sdm_enabled, comm_mode)
 
@@ -113,7 +115,7 @@ class SDMOptions:
         return value.to_bytes()
 
     @classmethod
-    def from_bytes(self, data: bytes) -> Self:
+    def from_bytes(cls, data: bytes) -> Self:
         ascii_encoding = bool(data[0] & 1)
         tt_status = bool(data[0] & 8)
         enc_file_data = bool(data[0] & 16)
@@ -133,15 +135,15 @@ class SDMAccessRights:
 
     def to_bytes(self):
         # ref: page 71, table 69
-        b1 = self.meta_read.value * 16 + self.file_read.value
-        b2 = 15 * 16 + self.ctr_ret.value
+        b1 = 15 * 16 + self.ctr_ret.value
+        b2 = self.meta_read.value * 16 + self.file_read.value
         return b1.to_bytes() + b2.to_bytes()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        meta_read = AccessCondition(data[0] >> 4)
-        file_read = AccessCondition(data[0] & 15)
-        ctr_ret = AccessCondition(data[1] & 15)
+        meta_read = AccessCondition(data[1] >> 4)
+        file_read = AccessCondition(data[1] & 15)
+        ctr_ret = AccessCondition(data[0] & 15)
 
         return cls(meta_read, file_read, ctr_ret)
 
@@ -165,6 +167,9 @@ class FileSettings:
     enc_length: Optional[int] = None
     mac_offset: Optional[int] = None
     read_ctr_limit: Optional[int] = None
+
+    file_type: FileType = FileType.STANDARD_DATA
+    file_size: Optional[int] = None
 
     def to_bytes(self) -> bytes:
         # ref: page 70, table 69
@@ -207,6 +212,100 @@ class FileSettings:
                 data += pack("<L", self.read_ctr_limit)[:3]
 
         return data
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
+        # ref: page 75, table 73
+        file_type = FileType(data[0])
+        file_option = FileOption.from_bytes(data[1].to_bytes())
+        access_rights = AccessRights.from_bytes(data[2:4])
+        file_size = unpack("<L", data[4:7] + b"\0")[0]
+
+        next_offset = 7
+
+        sdm_options = None
+        sdm_access_rights = None
+        uid_offset = None
+        read_ctr_offset = None
+        picc_data_offset = None
+        tt_status_offset = None
+        mac_input_offset = None
+        enc_offset = None
+        enc_length = None
+        mac_offset = None
+        read_ctr_limit = None
+
+        if file_option.sdm_enabled:
+            sdm_options = SDMOptions.from_bytes(data[7:8])
+            sdm_access_rights = SDMAccessRights.from_bytes(data[8:10])
+
+            next_offset = 10
+
+            if (
+                sdm_options.uid
+                and sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            ):
+                uid_offset = unpack("<L", data[next_offset : next_offset + 3] + b"\0")[
+                    0
+                ]
+                next_offset += 3
+            if (
+                sdm_options.read_ctr
+                and sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            ):
+                read_ctr_offset = unpack(
+                    "<L", data[next_offset : next_offset + 3] + b"\0"
+                )[0]
+                next_offset += 3
+            if sdm_access_rights.meta_read.value < AccessCondition.FREE_ACCESS.value:
+                picc_data_offset = unpack(
+                    "<L", data[next_offset : next_offset + 3] + b"\0"
+                )[0]
+                next_offset += 3
+            if sdm_options.tt_status:
+                tt_status_offset = unpack(
+                    "<L", data[next_offset : next_offset + 3] + b"\0"
+                )[0]
+                next_offset += 3
+            if sdm_access_rights.file_read != AccessCondition.NO_ACCESS:
+                mac_input_offset = unpack(
+                    "<L", data[next_offset : next_offset + 3] + b"\0"
+                )[0]
+                next_offset += 3
+                if sdm_options.enc_file_data:
+                    enc_offset = unpack(
+                        "<L", data[next_offset : next_offset + 3] + b"\0"
+                    )[0]
+                    next_offset += 3
+                    enc_length = unpack(
+                        "<L", data[next_offset : next_offset + 3] + b"\0"
+                    )[0]
+                    next_offset += 3
+                mac_offset = unpack("<L", data[next_offset : next_offset + 3] + b"\0")
+                next_offset += 3
+            if sdm_options.read_ctr_limit:
+                read_ctr_limit = unpack(
+                    "<L", data[next_offset : next_offset + 3] + b"\0"
+                )[0]
+                next_offset += 3
+
+        return cls(
+            file_option,
+            access_rights,
+            sdm_options,
+            sdm_access_rights,
+            uid_offset,
+            read_ctr_offset,
+            picc_data_offset,
+            tt_status_offset,
+            mac_input_offset,
+            enc_offset,
+            enc_length,
+            mac_offset,
+            read_ctr_limit,
+            file_type,
+            file_size,
+        )
 
 
 class NTAG424DNA(Tag):
