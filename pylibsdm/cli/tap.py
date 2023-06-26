@@ -32,6 +32,9 @@ def validate(
         None, help="URI parameter for SDMENC data"
     ),
     param_cmac: Optional[str] = typer.Option(None, help="URI parameter for CMAC"),
+    param_cmac_input: Optional[str] = typer.Option(
+        None, help="URI parameter to calculate CMAC from"
+    ),
     file_key: str = typer.Argument(
         16 * "00", help="Key for decrypting SDM file data (hex)"
     ),
@@ -46,6 +49,7 @@ def validate(
             param_picc_data=param_picc_data,
             param_enc_data=param_enc_data,
             param_cmac=param_cmac,
+            param_cmac_input=param_cmac_input,
         )
         try:
             validator.parse_ndef(tag)

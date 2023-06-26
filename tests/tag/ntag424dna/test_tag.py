@@ -12,12 +12,8 @@ from unittest import mock
 
 import pytest
 
-from pylibsdm.tag import ntag424dna
-
-
-@pytest.fixture
-def sdm_tag():
-    return ntag424dna.NTAG424DNA(MockType4Tag())
+from pylibsdm.tag.ntag424dna.const import Application, CommandHeader, Status
+from pylibsdm.tag.ntag424dna.tag import NTAG424DNA
 
 
 class MockType4Tag:
@@ -60,13 +56,9 @@ class MockType4Tag:
         return rapdu
 
 
-def test_access_rights_from_bytes():
-    # ref: page 26
-    acs = ntag424dna.AccessRights.from_bytes(unhexlify("00E0"))
-    assert acs.read_write == ntag424dna.AccessCondition.KEY_0
-    assert acs.change == ntag424dna.AccessCondition.KEY_0
-    assert acs.read == ntag424dna.AccessCondition.FREE_ACCESS
-    assert acs.write == ntag424dna.AccessCondition.KEY_0
+@pytest.fixture
+def sdm_tag():
+    return NTAG424DNA(MockType4Tag())
 
 
 def test_reset_keys(sdm_tag):
@@ -114,23 +106,23 @@ def test_ivc(sdm_tag):
 def test_send_command_plain(sdm_tag):
     # ref: page 29, table 14
     rapdu = sdm_tag.send_command_plain(
-        ntag424dna.CommandHeader.AUTH_EV2_FIRST,
+        CommandHeader.AUTH_EV2_FIRST,
         b"\0\0",
-        expected=ntag424dna.Status.ADDITIONAL_DF_EXPECTED,
+        expected=Status.ADDITIONAL_DF_EXPECTED,
     )
     assert rapdu == unhexlify("A04C124213C186F22399D33AC2A30215")
 
 
 def test_select_application(sdm_tag):
     # ref: page 25, table 11
-    sdm_tag.select_application(ntag424dna.Application.NDEF)
+    sdm_tag.select_application(Application.NDEF)
     assert "00A4040C07D276000085010100" in sdm_tag.tag.apdus_called
 
 
 def test_authenticate_ev2_first_key_0(sdm_tag):
     # ref: page 29, table 14
     with mock.patch(
-        "pylibsdm.tag.ntag424dna.get_random_bytes",
+        "pylibsdm.tag.ntag424dna.tag.get_random_bytes",
         return_value=unhexlify("13C5DB8A5930439FC3DEF9A4C675360F"),
     ):
         sdm_tag.authenticate_ev2_first()
@@ -150,7 +142,7 @@ def test_authenticate_ev2_first_key_0(sdm_tag):
 def test_authenticate_ev2_first_key_3(sdm_tag):
     # ref: page 35, table 20
     with mock.patch(
-        "pylibsdm.tag.ntag424dna.get_random_bytes",
+        "pylibsdm.tag.ntag424dna.tag.get_random_bytes",
         return_value=unhexlify("B98F4C50CF1C2E084FD150E33992B048"),
     ):
         sdm_tag.authenticate_ev2_first(3)
@@ -180,37 +172,3 @@ def test_change_key(sdm_tag):
         "90C400002900C0EB4DEEFEDDF0B513A03A95A75491818580503190D4D05053FF75668A01D6FDA6610234BDED643200"
         in sdm_tag.tag.apdus_called
     )
-
-
-@pytest.mark.xfail(True, reason="Apparently broken test case in spec")
-def test_file_settings_from_bytes():
-    # ref: page 26, table 12
-    file_settings = ntag424dna.FileSettings.from_bytes(
-        unhexlify("004000E0000100C1F121200000430000")
-    )
-
-    assert file_settings.file_type == ntag424dna.FileType.STANDARD_DATA
-    assert file_settings.file_size == 256
-
-    assert file_settings.file_option.sdm_enabled
-    assert file_settings.file_option.comm_mode == ntag424dna.CommMode.PLAIN
-
-    assert file_settings.access_rights.read_write == ntag424dna.AccessCondition.KEY_0
-    assert file_settings.access_rights.change == ntag424dna.AccessCondition.KEY_0
-    assert file_settings.access_rights.read == ntag424dna.AccessCondition.FREE_ACCESS
-    assert file_settings.access_rights.write == ntag424dna.AccessCondition.KEY_0
-
-    assert file_settings.sdm_options is not None
-    assert file_settings.sdm_access_rights is not None
-
-    assert file_settings.sdm_options.uid
-    assert file_settings.sdm_options.read_ctr
-    assert file_settings.sdm_options.ascii_encoding
-    assert not file_settings.sdm_options.read_ctr_limit
-
-    assert file_settings.sdm_access_rights.ctr_ret == ntag424dna.AccessCondition.KEY_1
-    assert file_settings.sdm_access_rights.meta_read == ntag424dna.AccessCondition.KEY_2
-    assert file_settings.sdm_access_rights.file_read == ntag424dna.AccessCondition.KEY_1
-
-    assert file_settings.uid_offset == 32
-    assert file_settings.read_ctr_offset == 67
