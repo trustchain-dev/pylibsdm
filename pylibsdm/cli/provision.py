@@ -3,11 +3,13 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
 import logging
+from dataclasses import asdict
 from enum import StrEnum
 from typing import Annotated, Optional
 
 import nfc
 import typer
+from rich.pretty import pretty_repr
 
 from ..tag.tag import Tag
 
@@ -74,12 +76,13 @@ def get_file_settings(
     def _do_get_file_settings(tag: Tag) -> bool:
         try:
             file_settings = tag.get_file_settings(file_nr)
-            logger.info("Retrieved file settings: %s", file_settings.asdict())
+            logger.info(
+                "Retrieved file settings:\n%s", pretty_repr(asdict(file_settings))
+            )
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=0)
         except nfc.tag.TagCommandError as exc:
             logger.error("Could not retrieve file settings: %s", str(exc))
-            msg = str(exc)
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=1)
 

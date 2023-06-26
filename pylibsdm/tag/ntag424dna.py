@@ -12,20 +12,21 @@ from binascii import hexlify
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from struct import pack, unpack
-from types import ClassMethodDescriptorType
 from typing import ClassVar, Optional, Self
 
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 from Crypto.Random import get_random_bytes
-from Crypto.Util.Padding import pad, unpad
+from Crypto.Util.Padding import pad
 from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
-from pytest import xfail
 
 from ..util import NULL_IV, bytes_xor
 from .tag import Tag
 
 LOGGER = logging.getLogger(__name__)
+
+
+DEFAULT_STATUS_OK = b"\x90\x00"
 
 
 class CommMode(IntEnum):
@@ -281,7 +282,9 @@ class FileSettings:
                         "<L", data[next_offset : next_offset + 3] + b"\0"
                     )[0]
                     next_offset += 3
-                mac_offset = unpack("<L", data[next_offset : next_offset + 3] + b"\0")
+                mac_offset = unpack("<L", data[next_offset : next_offset + 3] + b"\0")[
+                    0
+                ]
                 next_offset += 3
             if sdm_options.read_ctr_limit:
                 read_ctr_limit = unpack(
@@ -308,6 +311,29 @@ class FileSettings:
         )
 
 
+class CommandHeader(Enum):
+    # ref: page 47, table 22
+    # FIXME complete, if that makes sense
+    ISO_SELECT_NDEF_APP = (0x00, 0xA4, 0x04, 0x0C)
+    AUTH_EV2_FIRST = (0x90, 0x71, 0x00, 0x00)
+    AUTH_AES_NON_FIRST = (0x90, 0x77, 0x00, 0x00)
+    ADDITIONAL_DF = (0x90, 0xAF, 0x00, 0x00)
+    CHANGE_KEY = (0x90, 0xC4, 0x00, 0x00)
+    GET_FILE_SETTINGS = (0x90, 0xF5, 0x00, 0x00)
+
+
+class Status(Enum):
+    # ref: page 48, table 23
+    # FIXME complete, if that makes sense
+    COMMAND_SUCCESSFUL = b"\x90\x00"
+    OK = b"\x91\x00"
+    ADDITIONAL_DF_EXPECTED = b"\x91\xAF"
+
+
+class Application(Enum):
+    NDEF = b"\xd2\x76\x00\x00\x85\x01\x01"
+
+
 class NTAG424DNA(Tag):
     tag: Type4Tag
     cmdctr: int
@@ -320,26 +346,6 @@ class NTAG424DNA(Tag):
 
     _prefix_ivc: ClassVar[bytes] = b"\xa5\x5a"
     _prefix_ivr: ClassVar[bytes] = b"\x5a\xa5"
-
-    class CommandHeader(Enum):
-        # ref: page 47, table 22
-        # FIXME complete, if that makes sense
-        ISO_SELECT_NDEF_APP = (0x00, 0xA4, 0x04, 0x0C)
-        AUTH_EV2_FIRST = (0x90, 0x71, 0x00, 0x00)
-        AUTH_AES_NON_FIRST = (0x90, 0x77, 0x00, 0x00)
-        ADDITIONAL_DF = (0x90, 0xAF, 0x00, 0x00)
-        CHANGE_KEY = (0x90, 0xC4, 0x00, 0x00)
-        GET_FILE_SETTINGS = (0x90, 0xF5, 0x00, 0x00)
-
-    class Status(Enum):
-        # ref: page 48, table 23
-        # FIXME complete, if that makes sense
-        COMMAND_SUCCESSFUL = b"\x90\x00"
-        OK = b"\x91\x00"
-        ADDITIONAL_DF_EXPECTED = b"\x91\xAF"
-
-    class Application(Enum):
-        NDEF = b"\xd2\x76\x00\x00\x85\x01\x01"
 
     def __init__(self, tag: Type4Tag):
         self.tag = tag
@@ -380,16 +386,28 @@ class NTAG424DNA(Tag):
             self._prefix_ivc + self.ti + pack("<H", self.cmdctr) + 8 * b"\0"
         )
 
-    def send_command(
+    @property
+    def ivr(self) -> bytes:
+        LOGGER.debug(
+            "Deriving IV for TI %s at counter %d with key nr %d",
+            self.ti,
+            self.cmdctr,
+            self.current_key_nr,
+        )
+
+        cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, NULL_IV)
+        return cipher.encrypt(
+            self._prefix_ivr + self.ti + pack("<H", self.cmdctr) + 8 * b"\0"
+        )
+
+    def send_command_plain(
         self,
         command: "CommandHeader",
         data: bytes,
         mrl: int = 256,
-        expected: Optional[bytes] = None,
+        expected: Status = Status(DEFAULT_STATUS_OK),
     ) -> bytes:
-        if expected is None:
-            expected = self.Status.COMMAND_SUCCESSFUL
-
+        # ref: page 28, chapter 9.1.8
         LOGGER.debug(
             "SEND: command %s, payload %s",
             hexlify(bytearray(command.value)),
@@ -404,51 +422,106 @@ class NTAG424DNA(Tag):
 
         return rapdu
 
-    def send_command_secure(
+    def send_command_mac(
         self,
         key_nr: int,
         command: "CommandHeader",
         data: bytes,
         mrl: int = 256,
-        expected: Optional[bytes] = None,
+        expected: Status = Status(DEFAULT_STATUS_OK),
     ) -> bytes:
-        LOGGER.debug("ENC: payload %s", hexlify(data))
-        cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivc)
-        encrypted = cipher.encrypt(data)
+        # ref: page 28, chapter 9.1.9
+        if self.ti == 4 * b"\0":
+            LOGGER.info("Not authenticated for command mode FULL; authenticating")
+            self.authenticate_ev2_first(key_nr)
 
         LOGGER.debug(
-            "MAC: command %s, counter %d, TI %s, key nr %d, payload %s",
+            "MAC: command %s, counter %d, TI %s, payload %s",
             hexlify(command.value[1].to_bytes()),
             self.cmdctr,
             hexlify(self.ti),
-            key_nr,
-            hexlify(encrypted),
+            hexlify(data),
         )
         mac_input = (
-            command.value[1].to_bytes()
-            + pack("<H", self.cmdctr)
-            + self.ti
-            + key_nr.to_bytes()
-            + encrypted
+            command.value[1].to_bytes() + pack("<H", self.cmdctr) + self.ti + data
         )
         cmac = CMAC.new(self.k_ses_auth_mac, ciphermod=AES)
         cmac.update(mac_input)
         cmact = cmac.digest()[1::2]
 
         try:
-            self.send_command(
-                command, key_nr.to_bytes() + encrypted + cmact, mrl, expected
+            res = self.send_command_plain(command, data + cmact, mrl, expected)
+        except Type4TagCommandError:
+            self.reset_session()
+            raise
+
+        LOGGER.debug("Incrementing command counter")
+        self.cmdctr += 1
+
+        if len(res) > 8:
+            data_verified, mac_returned = res[:-8], res[-8:]
+
+            # ref: page 29, figure 8
+            mac_return_input = (
+                expected.value[1].to_bytes()
+                + pack("<H", self.cmdctr)
+                + self.ti
+                + data_verified
+            )
+            cmac = CMAC.new(self.k_ses_auth_mac, ciphermod=AES)
+            cmac.update(mac_return_input)
+            mac_returned_expected = cmac.digest()[1::2]
+
+            if mac_returned != mac_returned_expected:
+                raise ValueError(
+                    "Returned MAC %s does not match expected MAC %s",
+                    hexlify(mac_returned).decode(),
+                    hexlify(mac_returned_expected).decode(),
+                )
+            LOGGER.debug("Returned MAC matches expected MAC")
+        else:
+            LOGGER.debug("No MAC provided in response")
+            data_verified = b""
+
+        return data_verified
+
+    def send_command_full(
+        self,
+        key_nr: int,
+        command: "CommandHeader",
+        data: bytes,
+        mrl: int = 256,
+        expected: Status = Status(DEFAULT_STATUS_OK),
+    ) -> bytes:
+        if self.ti == 4 * b"\0":
+            LOGGER.info("Not authenticated for command mode FULL; authenticating")
+            self.authenticate_ev2_first(key_nr)
+
+        LOGGER.debug("ENC: payload %s", hexlify(data))
+        cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivc)
+        encrypted = cipher.encrypt(data)
+
+        try:
+            res = self.send_command_mac(
+                key_nr, command, key_nr.to_bytes() + encrypted, mrl, expected
             )
         except Type4TagCommandError:
             self.reset_session()
             raise
+
+        if res:
+            LOGGER.debug("DEC: payload %s", hexlify(res))
+            cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivr)
+            decrypted = cipher.decrypt(res)
         else:
-            LOGGER.debug("Incrementing command counter")
-            self.cmdctr += 1
+            LOGGER.debug("No payload to decrypt")
+            decrypted = encrypted
+
+        return decrypted
 
     def select_application(self, aid: "Application"):
         LOGGER.debug("Selecting application %s", hexlify(aid.value))
-        self.send_command(self.CommandHeader.ISO_SELECT_NDEF_APP, aid.value)
+        self.send_command_plain(CommandHeader.ISO_SELECT_NDEF_APP, aid.value)
         self.reset_session()
 
     def derive_challenge_response(
@@ -497,22 +570,22 @@ class NTAG424DNA(Tag):
 
     def authenticate_ev2_first(self, key_nr: int = 0) -> bool:
         # ref: page 50, chapter 11.4.1
-        self.select_application(self.Application.NDEF)
+        self.select_application(Application.NDEF)
         self.reset_session()
 
         LOGGER.debug("AUTH: Doing EV2 authentication with key nr %d", key_nr)
 
         key = self._keys[key_nr]
 
-        e_rndb = self.send_command(
-            self.CommandHeader.AUTH_EV2_FIRST,
+        e_rndb = self.send_command_plain(
+            CommandHeader.AUTH_EV2_FIRST,
             pack("<H", key_nr),
-            expected=self.Status.ADDITIONAL_DF_EXPECTED,
+            expected=Status.ADDITIONAL_DF_EXPECTED,
         )
 
         rnda, rndb, encrypted = self.derive_challenge_response(key, e_rndb)
-        e_data = self.send_command(
-            self.CommandHeader.ADDITIONAL_DF, encrypted, expected=self.Status.OK
+        e_data = self.send_command_plain(
+            CommandHeader.ADDITIONAL_DF, encrypted, expected=Status.OK
         )
 
         cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
@@ -566,18 +639,13 @@ class NTAG424DNA(Tag):
         # ref: page 66, chapter 11.5.2
         raise NotImplementedError()
 
-    def change_key(
-        self, key_nr: int, new_key: bytes, version: int = 1, auth_first: bool = True
-    ) -> bool:
+    def change_key(self, key_nr: int, new_key: bytes, version: int = 1) -> bool:
         # ref: page 67, chapter 11.6.1
         LOGGER.debug("Changing key nr %d using same key for auth", key_nr)
 
-        if auth_first:
-            self.authenticate_ev2_first(0)
-
         plain_input = pad(new_key + version.to_bytes(), 16, style="iso7816")
-        self.send_command_secure(
-            key_nr, self.CommandHeader.CHANGE_KEY, plain_input, expected=self.Status.OK
+        self.send_command_full(
+            key_nr, CommandHeader.CHANGE_KEY, plain_input, expected=Status.OK
         )
 
         return True
@@ -588,7 +656,15 @@ class NTAG424DNA(Tag):
 
     def get_file_settings(self, file_nr: int) -> FileSettings:
         # ref: page 75, chapter 11.7.2
-        raise NotImplementedError()
+        LOGGER.debug("Getting settings of file number %d", file_nr)
+
+        data = self.send_command_mac(
+            0,
+            CommandHeader.GET_FILE_SETTINGS,
+            file_nr.to_bytes(),
+            expected=Status.OK,
+        )
+        return FileSettings.from_bytes(data)
 
     def change_file_settings(self):
         # ref: page 70, chapter 11.7.1
