@@ -1,4 +1,8 @@
+"""Constants for communication protocol of NTAG424DNA"""
+
 from enum import Enum
+
+from pytest import xfail
 
 
 class CommandHeader(Enum):

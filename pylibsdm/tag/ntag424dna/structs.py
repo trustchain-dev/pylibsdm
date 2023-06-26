@@ -1,3 +1,5 @@
+"""Structures for communication with NTAG424DNA"""
+
 from dataclasses import dataclass
 from enum import IntEnum
 from struct import pack, unpack
@@ -5,43 +7,80 @@ from typing import Optional, Self
 
 
 class CommMode(IntEnum):
-    # ref: page 13, table 12
+    """Communication mode for commands sent to PICC.
+
+    The communication mode defines security and authentication while communicating
+    with the PICC.
+
+    Defined in spec on page 13, table 12.
+    """
+
+    #: Plain mode; commands are neither sigend nor encrypted
     PLAIN = 0
+    #: MAC mode; commands are signed using CMAC with an AES key
     MAC = 1
+    #: Full mode; commands are signed with CMAC and command data is encrypted
     FULL = 2
 
 
 class FileType(IntEnum):
-    # ref: page 11, table 6
+    """File type of one data file on the PICC.
+
+    Defined in spec on page 11, table 6.
+    """
+
     STANDARD_DATA = 0
 
 
 class AccessCondition(IntEnum):
-    # ref: page 11, table 6
+    """Access condition / key selection for various features.
+
+    This structure is used both for file access rights and SDM access rights.
+
+    Defined in spec on page 11, table 6.
+    """
+
+    #: App MasterKey (slot number 0)
     KEY_0 = 0
+    #: App key number 1
     KEY_1 = 1
+    #: App key number 2
     KEY_2 = 2
+    #: App key number 3
     KEY_3 = 3
+    #: App key number 4
     KEY_4 = 4
+    #: Access without providing a key / unauthenticated access
     FREE_ACCESS = 0xE
+    #: No access / access denied
     NO_ACCESS = 0xF
 
 
 @dataclass
 class AccessRights:
+    """Access rights to a data file on the PICC.
+
+    Defined in spec on page 11, table 7.
+    """
+
+    #: Selects a key which can read the file data
     read: AccessCondition
+    #: Selects a key which can write the file data
     write: AccessCondition
+    #: Selects a key which can both read and write the file data
     read_write: AccessCondition
+    #: Selects a key which can change the file settings
     change: AccessCondition
 
     def to_bytes(self):
-        # ref: page 11, table 7
+        """Serialize access rights for use on wire (e.g. ChangeFileSettings)."""
         b1 = self.read_write.value * 16 + self.change.value
         b2 = self.read.value * 16 + self.write.value
         return b1.to_bytes() + b2.to_bytes()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
+        """Deserialize access rights from wire (e.g. in GetFileSettings)."""
         read = AccessCondition(data[1] >> 4)
         write = AccessCondition(data[1] & 15)
         read_write = AccessCondition(data[0] >> 4)
@@ -52,11 +91,18 @@ class AccessRights:
 
 @dataclass
 class FileOption:
+    """Options to set on a file.
+
+    Defined in spec on page 75, table 73.
+    """
+
+    #: SDM (Secure Dynamic Messaging) and mirroring is enabled
     sdm_enabled: bool
+    #: Communication mode needed to access file data
     comm_mode: CommMode
 
     def to_bytes(self) -> bytes:
-        # ref: page 75, table 73
+        """Serialize file option for wire (e.g. in ChangeFileSettings)."""
         data = 0
         data |= int(self.sdm_enabled) * 64
         data |= self.comm_mode.value
@@ -64,6 +110,7 @@ class FileOption:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
+        """Deserialize file option from wire, e.g. in GetFileSettings)."""
         sdm_enabled = bool(data[0] & 64)
         comm_mode = CommMode(data[0] & 3)
         return cls(sdm_enabled, comm_mode)
@@ -71,15 +118,28 @@ class FileOption:
 
 @dataclass
 class SDMOptions:
+    """Detailed options for SDM (Secure Dynamic Messaging).
+
+    These options define exactly which mirroring features are enabled.
+
+    Defined in spec on page 71, table 69.
+    """
+
+    #: Enable UID mirroring
     uid: bool
+    #: Enable read counter mirroring
     read_ctr: bool
+    #: Enable limitation for read counter
     read_ctr_limit: bool
+    #: Enable mirroring of encrypted file data
     enc_file_data: bool
+    #: Enable mirroring of tag tamper status
     tt_status: bool
+    #: Enable ASCII encoding of mirrored data
     ascii_encoding: bool = True
 
     def to_bytes(self) -> bytes:
-        # ref: page 71, table 69
+        """Serialize SDM options for wire (e.g. in ChangeFileSettings)."""
         value = (
             self.ascii_encoding * 1
             + self.tt_status * 8
@@ -92,6 +152,7 @@ class SDMOptions:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
+        """Deserialize SDM options from wire (e.g. in GetFileSettings)."""
         ascii_encoding = bool(data[0] & 1)
         tt_status = bool(data[0] & 8)
         enc_file_data = bool(data[0] & 16)
@@ -105,18 +166,27 @@ class SDMOptions:
 
 @dataclass
 class SDMAccessRights:
+    """Access rights during read of NDEF data with mirroring.
+
+    Defined in spec on page 71, table 69.
+    """
+
+    #: Key allowed to read meta data (UID)
     meta_read: AccessCondition
+    #: Key allowed to read encrypted file data
     file_read: AccessCondition
+    #: Key allowed to read counter
     ctr_ret: AccessCondition
 
     def to_bytes(self):
-        # ref: page 71, table 69
+        """Serialize SDM access rights for wire (e.g. in ChangeFileSettings)."""
         b1 = 15 * 16 + self.ctr_ret.value
         b2 = self.meta_read.value * 16 + self.file_read.value
         return b1.to_bytes() + b2.to_bytes()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
+        """Deserialize SDM access rights from wire (e.g. in GetFileSettings)."""
         meta_read = AccessCondition(data[1] >> 4)
         file_read = AccessCondition(data[1] & 15)
         ctr_ret = AccessCondition(data[0] & 15)
@@ -129,26 +199,44 @@ class SDMAccessRights:
 
 @dataclass
 class FileSettings:
+    """Container for all settings of a data file.
+
+    Defined in spec on page 75, table 73.
+    """
+
     file_option: FileOption
     access_rights: AccessRights
     sdm_options: Optional[SDMOptions] = None
     sdm_access_rights: Optional[SDMAccessRights] = None
 
+    #: Offset to mirror UID at
     uid_offset: Optional[int] = None
+    #: Offset to mirror read counter at
     read_ctr_offset: Optional[int] = None
+    #: Offset to mirror PICC data at
     picc_data_offset: Optional[int] = None
+    #: Offset to mirror tag tamper status at
     tt_status_offset: Optional[int] = None
+    #: Offset to begin reading CMAC input from
     mac_input_offset: Optional[int] = None
+    #: Offset to mirror encrypted fiel data at, and start reading from
     enc_offset: Optional[int] = None
+    #: Length of file data to encrypt
     enc_length: Optional[int] = None
+    #: Offset to mirror CMAC at
     mac_offset: Optional[int] = None
+    #: Limit for read counter
     read_ctr_limit: Optional[int] = None
 
     file_type: FileType = FileType.STANDARD_DATA
+    #: Available size for file data
     file_size: Optional[int] = None
 
     def to_bytes(self) -> bytes:
-        # ref: page 70, table 69
+        """Serialize for wire (e.g. in ChangeFileSettings).
+
+        `file_type` and `file_size` are not encoded; cf. page 70, table 69.
+        """
         data = b""
 
         data += self.file_option.to_bytes()
@@ -191,7 +279,7 @@ class FileSettings:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        # ref: page 75, table 73
+        """Deserialize from wire (e.g. in GetFileSettings)."""
         file_type = FileType(data[0])
         file_option = FileOption.from_bytes(data[1].to_bytes())
         access_rights = AccessRights.from_bytes(data[2:4])
