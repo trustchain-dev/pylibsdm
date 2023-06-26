@@ -118,7 +118,7 @@ class ParamValidator:
             logger.debug("Found enc_data: %s", enc_data)
             self.file_data = self.decrypt_file_data()
         else:
-            logger.debug("Noc enc_data parameter found")
+            logger.debug("No enc_data parameter found")
 
         if cmac := params.get(self.param_cmac):
             self.cmac = cmac
