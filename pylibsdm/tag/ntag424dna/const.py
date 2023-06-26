@@ -2,8 +2,6 @@
 
 from enum import Enum
 
-from pytest import xfail
-
 
 class CommandHeader(Enum):
     # ref: page 47, table 22
