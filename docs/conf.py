@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: © 2023 Dominik George <nik@velocitux.com>
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:

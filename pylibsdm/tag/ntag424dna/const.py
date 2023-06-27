@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: © 2023 Dominik George <nik@velocitux.com>
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
 """Constants for communication protocol of NTAG424DNA"""
 
 from enum import Enum
