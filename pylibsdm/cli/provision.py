@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
 import logging
-from dataclasses import asdict
 from enum import StrEnum
 from typing import Annotated, Optional
 
@@ -77,7 +76,7 @@ def get_file_settings(
         try:
             file_settings = tag.get_file_settings(file_nr)
             logger.info(
-                "Retrieved file settings:\n%s", pretty_repr(asdict(file_settings))
+                "Retrieved file settings:\n%s", pretty_repr(dict(file_settings))
             )
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=0)

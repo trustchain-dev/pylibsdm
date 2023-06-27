@@ -1,9 +1,10 @@
 """Structures for communication with NTAG424DNA"""
 
-from dataclasses import dataclass
 from enum import IntEnum
 from struct import pack, unpack
 from typing import Optional, Self
+
+from pydantic import BaseModel
 
 
 class CommMode(IntEnum):
@@ -56,8 +57,7 @@ class AccessCondition(IntEnum):
     NO_ACCESS = 0xF
 
 
-@dataclass
-class AccessRights:
+class AccessRights(BaseModel):
     """Access rights to a data file on the PICC.
 
     Defined in spec on page 11, table 7.
@@ -86,11 +86,10 @@ class AccessRights:
         read_write = AccessCondition(data[0] >> 4)
         change = AccessCondition(data[0] & 15)
 
-        return cls(read, write, read_write, change)
+        return cls(read=read, write=write, read_write=read_write, change=change)
 
 
-@dataclass
-class FileOption:
+class FileOption(BaseModel):
     """Options to set on a file.
 
     Defined in spec on page 75, table 73.
@@ -113,11 +112,10 @@ class FileOption:
         """Deserialize file option from wire, e.g. in GetFileSettings)."""
         sdm_enabled = bool(data[0] & 64)
         comm_mode = CommMode(data[0] & 3)
-        return cls(sdm_enabled, comm_mode)
+        return cls(sdm_enabled=sdm_enabled, comm_mode=comm_mode)
 
 
-@dataclass
-class SDMOptions:
+class SDMOptions(BaseModel):
     """Detailed options for SDM (Secure Dynamic Messaging).
 
     These options define exactly which mirroring features are enabled.
@@ -160,12 +158,16 @@ class SDMOptions:
         read_ctr = bool(data[0] & 64)
         uid = bool(data[0] & 128)
         return cls(
-            uid, read_ctr, read_ctr_limit, enc_file_data, tt_status, ascii_encoding
+            uid=uid,
+            read_ctr=read_ctr,
+            read_ctr_limit=read_ctr_limit,
+            enc_file_data=enc_file_data,
+            tt_status=tt_status,
+            ascii_encoding=ascii_encoding,
         )
 
 
-@dataclass
-class SDMAccessRights:
+class SDMAccessRights(BaseModel):
     """Access rights during read of NDEF data with mirroring.
 
     Defined in spec on page 71, table 69.
@@ -191,14 +193,13 @@ class SDMAccessRights:
         file_read = AccessCondition(data[1] & 15)
         ctr_ret = AccessCondition(data[0] & 15)
 
-        return cls(meta_read, file_read, ctr_ret)
+        return cls(meta_read=meta_read, file_read=file_read, ctr_ret=ctr_ret)
 
 
 # FIXME maybe implement standard files, table 8 et al
 
 
-@dataclass
-class FileSettings:
+class FileSettings(BaseModel):
     """Container for all settings of a data file.
 
     Defined in spec on page 75, table 73.
@@ -356,19 +357,19 @@ class FileSettings:
                 next_offset += 3
 
         return cls(
-            file_option,
-            access_rights,
-            sdm_options,
-            sdm_access_rights,
-            uid_offset,
-            read_ctr_offset,
-            picc_data_offset,
-            tt_status_offset,
-            mac_input_offset,
-            enc_offset,
-            enc_length,
-            mac_offset,
-            read_ctr_limit,
-            file_type,
-            file_size,
+            file_option=file_option,
+            access_rights=access_rights,
+            sdm_options=sdm_options,
+            sdm_access_rights=sdm_access_rights,
+            uid_offset=uid_offset,
+            read_ctr_offset=read_ctr_offset,
+            picc_data_offset=picc_data_offset,
+            tt_status_offset=tt_status_offset,
+            mac_input_offset=mac_input_offset,
+            enc_offset=enc_offset,
+            enc_length=enc_length,
+            mac_offset=mac_offset,
+            read_ctr_limit=read_ctr_limit,
+            file_type=file_type,
+            file_size=file_size,
         )
