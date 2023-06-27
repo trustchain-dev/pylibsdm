@@ -41,6 +41,9 @@ sphinx = "^7.0.1"
 [tool.poetry.scripts]
 sdmutil = { callable = "pylibsdm.cli:app", extras = ["cli"] }
 
+[tool.poetry.plugins."pylibsdm.tags"]
+ntag424dna = "pylibsdm.tag.ntag424dna:Tag"
+
 [tool.black]
 line-length = 88
 target-version = ['py311']

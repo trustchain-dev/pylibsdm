@@ -13,7 +13,7 @@ from rich.pretty import pretty_repr
 
 from ..tag.tag import Tag
 
-TagType = StrEnum("TagType", {name: name for name in Tag._tag_types.keys()})
+TagModule = StrEnum("TagModule", {name: name for name in Tag.get_tag_modules().keys()})
 
 app = typer.Typer()
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @app.callback()
 def configure_provision(
     ctx: typer.Context,
-    tag_type: TagType = typer.Argument(
+    tag_module: TagModule = typer.Argument(
         ..., help="Type of NFC tag to provision", case_sensitive=False
     ),
     key: Annotated[
@@ -33,7 +33,8 @@ def configure_provision(
     json: Optional[Path] = typer.Option(None, help="Path to a JSON file to read/write"),
 ):
     """Provision (configure) NFC tokens for SDM usage"""
-    ctx.obj["tag_class"] = Tag._tag_types[tag_type.value]
+    ctx.obj["tag_module"] = Tag.get_tag_module(tag_module)
+
     # TODO handle keys
 
     ctx.obj["json"] = json
@@ -68,7 +69,7 @@ def auth(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_auth)
+        ctx.obj["tag_module"].Tag.connect_loop(ctx.obj["clf"], _do_auth)
 
 
 @app.command()
@@ -84,7 +85,7 @@ def get_file_settings(
             )
             if ctx.obj["json"]:
                 with open(ctx.obj["json"], "wt") as json_file:
-                    json_file.write(file_settings.json())
+                    json_file.write(file_settings.json(indent=2))
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=0)
         except nfc.tag.TagCommandError as exc:
@@ -96,7 +97,7 @@ def get_file_settings(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_get_file_settings)
+        ctx.obj["tag_module"].Tag.connect_loop(ctx.obj["clf"], _do_get_file_settings)
 
 
 @app.command()
@@ -107,10 +108,9 @@ def change_file_settings(
 ):
     if ctx.obj["json"]:
         with open(ctx.obj["json"], "rt") as json_file:
-            # FIXME make FileSettigns class independent of tag model
-            from ..tag.ntag424dna.structs import FileSettings
-
-            file_settings = FileSettings.parse_raw(json_file.read())
+            file_settings = ctx.obj["tag_module"].FileSettings.parse_raw(
+                json_file.read()
+            )
     else:
         logger.critical(
             "Changing file settings is currently only possible with --json input"
@@ -132,4 +132,4 @@ def change_file_settings(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_change_file_settings)
+        ctx.obj["tag_module"].Tag.connect_loop(ctx.obj["clf"], _do_change_file_settings)

@@ -2,17 +2,39 @@
 #
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
-from typing import Callable
+import logging
+from importlib import import_module
+from importlib.metadata import entry_points
+from typing import Any, Callable, ClassVar
 
 import nfc
 
 
-class Tag:
-    _tag_types: dict[str, type] = {}
+logger = logging.getLogger(__name__)
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls._tag_types[cls.__name__] = cls
+
+class Tag:
+    _tag_modules: ClassVar[dict[str, Any]] = {}
+
+    @classmethod
+    def load_tag_modules(cls):
+        eps = entry_points(group="pylibsdm.tags")
+        for ep in eps:
+            logger.debug("Discovered tag module %s", ep.module)
+            mod = import_module(ep.module)
+            cls._tag_modules[mod.Tag.__name__] = mod
+
+    @classmethod
+    def get_tag_modules(cls) -> dict[str, Any]:
+        if not cls._tag_modules:
+            cls.load_tag_modules()
+        return cls._tag_modules
+
+    @classmethod
+    def get_tag_module(cls, name: str) -> Any:
+        if not cls._tag_modules:
+            cls.load_tag_modules()
+        return cls._tag_modules[name]
 
     @classmethod
     def connect_loop(
