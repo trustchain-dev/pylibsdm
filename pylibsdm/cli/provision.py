@@ -45,6 +45,8 @@ def auth(
     ctx: typer.Context,
     key_nr: int = typer.Argument(help="Key slot number to test auth with"),
 ):
+    """Test authentication with a key number"""
+
     def _do_auth(tag: Tag) -> bool:
         msg = "unknown failure"
         try:
@@ -77,6 +79,8 @@ def get_file_settings(
     ctx: typer.Context,
     file_nr: int = typer.Argument(help="File number to retrieve settings for"),
 ):
+    """Retrieve current settings for a file on tag"""
+
     def _do_get_file_settings(tag: Tag) -> bool:
         try:
             file_settings = tag.get_file_settings(file_nr)
@@ -106,6 +110,7 @@ def change_file_settings(
     file_nr: int = typer.Argument(help="File number to retrieve settings for"),
     yes: bool = typer.Option(help="Confirm changing file settings", prompt=True),
 ):
+    """Change settings for a file on tag"""
     if ctx.obj["json"]:
         with open(ctx.obj["json"], "rt") as json_file:
             file_settings = ctx.obj["tag_module"].FileSettings.parse_raw(

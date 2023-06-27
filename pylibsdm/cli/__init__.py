@@ -33,6 +33,7 @@ def configure_app(
     batch: bool = typer.Option(False, help="Batch operation in loop"),
     beep: bool = typer.Option(True, help="Beep reader on connect"),
 ):
+    """Handle SUN-capable NFC tags"""
     ctx.ensure_object(dict)
 
     logging.basicConfig(

@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 
 import nfc
+from pytest import xfail
 import typer
 
 from ..backend.validate import ParamValidator
@@ -42,6 +43,8 @@ def validate(
         16 * "00", help="Key for decrypting SDM meta data (hex)"
     ),
 ):
+    """Validate the NDEF message read from a tag"""
+
     def _do_validate(tag: nfc.tag.Tag) -> bool:
         validator = ParamValidator(
             file_key,
