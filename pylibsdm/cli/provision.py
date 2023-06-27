@@ -4,6 +4,7 @@
 
 import logging
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Optional
 
 import nfc
@@ -29,10 +30,13 @@ def configure_provision(
         Optional[list[str]],
         typer.Option(help="(Current) key for slot x as hex string, e.g. 0:aabbcc"),
     ] = None,
+    json: Optional[Path] = typer.Option(None, help="Path to a JSON file to read/write"),
 ):
     """Provision (configure) NFC tokens for SDM usage"""
     ctx.obj["tag_class"] = Tag._tag_types[tag_type.value]
     # TODO handle keys
+
+    ctx.obj["json"] = json
 
 
 @app.command()
@@ -78,6 +82,9 @@ def get_file_settings(
             logger.info(
                 "Retrieved file settings:\n%s", pretty_repr(dict(file_settings))
             )
+            if ctx.obj["json"]:
+                with open(ctx.obj["json"], "wt") as json_file:
+                    json_file.write(file_settings.json())
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=0)
         except nfc.tag.TagCommandError as exc:
