@@ -95,17 +95,21 @@ class NTAG424DNA(Tag):
     def send_command_plain(
         self,
         command: "CommandHeader",
-        data: bytes,
+        hdr: bytes = b"",
+        data: bytes = b"",
         mrl: int = 256,
         expected: Status = Status(DEFAULT_STATUS_OK),
     ) -> bytes:
         # ref: page 28, chapter 9.1.8
         LOGGER.debug(
-            "SEND: command %s, payload %s",
+            "SEND: command %s, hdr %s, data %s",
             hexlify(bytearray(command.value)),
+            hexlify(hdr),
             hexlify(data),
         )
-        res = self.tag.send_apdu(*command.value, data, mrl=mrl, check_status=False)
+        res = self.tag.send_apdu(
+            *command.value, hdr + data, mrl=mrl, check_status=False
+        )
         status, rapdu = res[-2:], res[:-2]
         LOGGER.debug("RECV: status %s, payload %s", hexlify(status), hexlify(rapdu))
 
@@ -118,6 +122,7 @@ class NTAG424DNA(Tag):
         self,
         key_nr: int,
         command: "CommandHeader",
+        hdr: bytes,
         data: bytes,
         mrl: int = 256,
         expected: Status = Status(DEFAULT_STATUS_OK),
@@ -128,21 +133,22 @@ class NTAG424DNA(Tag):
             self.authenticate_ev2_first(key_nr)
 
         LOGGER.debug(
-            "MAC: command %s, counter %d, TI %s, payload %s",
+            "MAC: command %s, counter %d, TI %s, hdr %s, data %s",
             hexlify(command.value[1].to_bytes()),
             self.cmdctr,
             hexlify(self.ti),
+            hexlify(hdr),
             hexlify(data),
         )
         mac_input = (
-            command.value[1].to_bytes() + pack("<H", self.cmdctr) + self.ti + data
+            command.value[1].to_bytes() + pack("<H", self.cmdctr) + self.ti + hdr + data
         )
         cmac = CMAC.new(self.k_ses_auth_mac, ciphermod=AES)
         cmac.update(mac_input)
         cmact = cmac.digest()[1::2]
 
         try:
-            res = self.send_command_plain(command, data + cmact, mrl, expected)
+            res = self.send_command_plain(command, hdr, data + cmact, mrl, expected)
         except Type4TagCommandError:
             self.reset_session()
             raise
@@ -181,6 +187,7 @@ class NTAG424DNA(Tag):
         self,
         key_nr: int,
         command: "CommandHeader",
+        hdr: bytes,
         data: bytes,
         mrl: int = 256,
         expected: Status = Status(DEFAULT_STATUS_OK),
@@ -191,12 +198,10 @@ class NTAG424DNA(Tag):
 
         LOGGER.debug("ENC: payload %s", hexlify(data))
         cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivc)
-        encrypted = cipher.encrypt(data)
+        encrypted = cipher.encrypt(pad(data, 16, style="iso7816"))
 
         try:
-            res = self.send_command_mac(
-                key_nr, command, key_nr.to_bytes() + encrypted, mrl, expected
-            )
+            res = self.send_command_mac(key_nr, command, hdr, encrypted, mrl, expected)
         except Type4TagCommandError:
             self.reset_session()
             raise
@@ -213,7 +218,7 @@ class NTAG424DNA(Tag):
 
     def select_application(self, aid: "Application"):
         LOGGER.debug("Selecting application %s", hexlify(aid.value))
-        self.send_command_plain(CommandHeader.ISO_SELECT_NDEF_APP, aid.value)
+        self.send_command_plain(CommandHeader.ISO_SELECT_NDEF_APP, data=aid.value)
         self.reset_session()
 
     def derive_challenge_response(
@@ -272,12 +277,13 @@ class NTAG424DNA(Tag):
         e_rndb = self.send_command_plain(
             CommandHeader.AUTH_EV2_FIRST,
             pack("<H", key_nr),
+            b"",
             expected=Status.ADDITIONAL_DF_EXPECTED,
         )
 
         rnda, rndb, encrypted = self.derive_challenge_response(key, e_rndb)
         e_data = self.send_command_plain(
-            CommandHeader.ADDITIONAL_DF, encrypted, expected=Status.OK
+            CommandHeader.ADDITIONAL_DF, b"", encrypted, expected=Status.OK
         )
 
         cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
@@ -335,9 +341,12 @@ class NTAG424DNA(Tag):
         # ref: page 67, chapter 11.6.1
         LOGGER.debug("Changing key nr %d using same key for auth", key_nr)
 
-        plain_input = pad(new_key + version.to_bytes(), 16, style="iso7816")
         self.send_command_full(
-            key_nr, CommandHeader.CHANGE_KEY, plain_input, expected=Status.OK
+            key_nr,
+            CommandHeader.CHANGE_KEY,
+            key_nr.to_bytes(),
+            new_key + version.to_bytes(),
+            expected=Status.OK,
         )
 
         return True
@@ -355,19 +364,26 @@ class NTAG424DNA(Tag):
             0,
             CommandHeader.GET_FILE_SETTINGS,
             file_nr.to_bytes(),
+            b"",
             expected=Status.OK,
         )
+        LOGGER.debug("Received file settings: %s", hexlify(data))
+
         return FileSettings.from_bytes(data)
 
     def change_file_settings(self, file_nr: int, file_settings: FileSettings):
         # ref: page 70, chapter 11.7.1
         LOGGER.debug("Changing settings of file number %d", file_nr)
 
+        settings_data = file_settings.to_bytes()
+        LOGGER.debug("Sending file settings: %s", hexlify(settings_data))
+
         # FIXME make key number selectable
         self.send_command_full(
             0,
             CommandHeader.CHANGE_FILE_SETTINGS,
-            file_nr.to_bytes() + file_settings.to_bytes(),
+            file_nr.to_bytes(),
+            settings_data,
             expected=Status.OK,
         )
 

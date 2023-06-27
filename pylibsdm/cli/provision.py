@@ -97,3 +97,39 @@ def get_file_settings(
     while True:
         # FIXME add timeout; possibly move elsewhere
         ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_get_file_settings)
+
+
+@app.command()
+def change_file_settings(
+    ctx: typer.Context,
+    file_nr: int = typer.Argument(help="File number to retrieve settings for"),
+    yes: bool = typer.Option(help="Confirm changing file settings", prompt=True),
+):
+    if ctx.obj["json"]:
+        with open(ctx.obj["json"], "rt") as json_file:
+            # FIXME make FileSettigns class independent of tag model
+            from ..tag.ntag424dna.structs import FileSettings
+
+            file_settings = FileSettings.parse_raw(json_file.read())
+    else:
+        logger.critical(
+            "Changing file settings is currently only possible with --json input"
+        )
+        raise typer.Exit(code=2)
+
+    def _do_change_file_settings(tag: Tag) -> bool:
+        try:
+            tag.change_file_settings(file_nr, file_settings)
+            logger.info("Changed file settings of file nr. %d", file_nr)
+            if not ctx.obj["batch"]:
+                raise typer.Exit(code=0)
+        except nfc.tag.TagCommandError as exc:
+            logger.error("Could not change file settings: %s", str(exc))
+            if not ctx.obj["batch"]:
+                raise typer.Exit(code=1)
+
+        return True
+
+    while True:
+        # FIXME add timeout; possibly move elsewhere
+        ctx.obj["tag_class"].connect_loop(ctx.obj["clf"], _do_change_file_settings)
