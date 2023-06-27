@@ -24,7 +24,7 @@ def configure_tap(
 
 
 @app.command()
-def validate(
+def validate_uri_params(
     ctx: typer.Context,
     param_picc_data: Optional[str] = typer.Option(
         None, help="URI parameter for PICC data"
@@ -43,7 +43,7 @@ def validate(
         16 * "00", help="Key for decrypting SDM meta data (hex)"
     ),
 ):
-    """Validate the NDEF message read from a tag"""
+    """Validate the URI read from tag via NDEF by reading its query parameters"""
 
     def _do_validate(tag: nfc.tag.Tag) -> bool:
         validator = ParamValidator(
