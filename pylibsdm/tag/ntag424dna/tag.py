@@ -350,6 +350,7 @@ class NTAG424DNA(Tag):
         # ref: page 75, chapter 11.7.2
         LOGGER.debug("Getting settings of file number %d", file_nr)
 
+        # FIXME make key number selectable
         data = self.send_command_mac(
             0,
             CommandHeader.GET_FILE_SETTINGS,
@@ -358,9 +359,17 @@ class NTAG424DNA(Tag):
         )
         return FileSettings.from_bytes(data)
 
-    def change_file_settings(self):
+    def change_file_settings(self, file_nr: int, file_settings: FileSettings):
         # ref: page 70, chapter 11.7.1
-        raise NotImplementedError()
+        LOGGER.debug("Changing settings of file number %d", file_nr)
+
+        # FIXME make key number selectable
+        self.send_command_full(
+            0,
+            CommandHeader.CHANGE_FILE_SETTINGS,
+            file_nr.to_bytes() + file_settings.to_bytes(),
+            expected=Status.OK,
+        )
 
     def read_data(self):
         # ref: page 79, chapter 11.8.1

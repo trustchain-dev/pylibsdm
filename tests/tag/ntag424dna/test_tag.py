@@ -13,6 +13,15 @@ from unittest import mock
 import pytest
 
 from pylibsdm.tag.ntag424dna.const import Application, CommandHeader, Status
+from pylibsdm.tag.ntag424dna.structs import (
+    AccessCondition,
+    AccessRights,
+    CommMode,
+    FileOption,
+    FileSettings,
+    SDMAccessRights,
+    SDMOptions,
+)
 from pylibsdm.tag.ntag424dna.tag import NTAG424DNA
 
 
@@ -27,7 +36,9 @@ class MockType4Tag:
         "90AF000020FF0306E47DFBC50087C4D8A78E88E62DE1E8BE457AA477C707E2F0874916A8B100": "0CC9A8094A8EEA683ECAAC5C7BF20584206D0608D477110FC6B3D5D3F65C3A6A9100",
         "90C400002900C0EB4DEEFEDDF0B513A03A95A75491818580503190D4D05053FF75668A01D6FDA6610234BDED643200": "9100",
         "90770000010000": "A6A2B3C572D06C097BB8DB70463E22DC91AF",
+        # FIXME two following lines probably wrong due to broken spec
         "90AF000020BE7D45753F2CAB85F34BC60CE58B940763FE969658A532DF6D95EA2773F6E99100": "B888349C24B315EAB5B589E279C8263E9100",
+        "905F0000190261B6D97903566E84C3AE5274467E89EAD799B7C1A0EF7A0400": "910057BFF87B1241E93D",
     }
 
     def __init__(self, apdu_map: Optional[dict[str, str]] = None):
@@ -170,5 +181,51 @@ def test_change_key(sdm_tag):
     assert res
     assert (
         "90C400002900C0EB4DEEFEDDF0B513A03A95A75491818580503190D4D05053FF75668A01D6FDA6610234BDED643200"
+        in sdm_tag.tag.apdus_called
+    )
+
+
+def test_get_file_settings(sdm_tag):
+    pass
+
+
+@pytest.mark.xfail(True, reason="Test data broken in spec")
+def test_change_file_settings(sdm_tag):
+    # ref: page 34, table 19
+    sdm_tag.k_ses_auth_enc = unhexlify("1309C877509E5A215007FF0ED19CA564")
+    sdm_tag.k_ses_auth_mac = unhexlify("4C6626F5E72EA694202139295C7A7FC7")
+
+    file_option = FileOption(sdm_enabled=True, comm_mode=CommMode.PLAIN)
+    access_rights = AccessRights(
+        AccessCondition.FREE_ACCESS,
+        AccessCondition.KEY_0,
+        AccessCondition.KEY_0,
+        AccessCondition.KEY_0,
+    )
+    sdm_options = SDMOptions(
+        uid=True,
+        read_ctr=True,
+        read_ctr_limit=False,
+        enc_file_data=False,
+        tt_status=False,
+        ascii_encoding=True,
+    )
+    sdm_acceess_rights = SDMAccessRights(
+        AccessCondition.KEY_2, AccessCondition.KEY_1, AccessCondition.KEY_1
+    )
+
+    file_settings = FileSettings(
+        file_option=file_option,
+        access_rights=access_rights,
+        sdm_options=sdm_options,
+        sdm_access_rights=sdm_acceess_rights,
+        picc_data_offset=32,
+        mac_offset=67,
+        mac_input_offset=67,
+    )
+    sdm_tag.change_file_settings(2, file_settings)
+
+    assert (
+        "905F0000190261B6D97903566E84C3AE5274467E89EAD799B7C1A0EF7A0400"
         in sdm_tag.tag.apdus_called
     )
