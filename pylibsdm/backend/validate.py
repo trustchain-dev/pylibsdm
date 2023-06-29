@@ -14,6 +14,7 @@ import nfc
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 
+from ..tag.tag import Tag
 from ..util import NULL_IV
 
 
@@ -51,6 +52,7 @@ class ParamValidator:
 
     def __init__(
         self,
+        tag_class: Tag | str,
         k_sdm_file_read: str = 16 * "00",
         k_sdm_meta_read: str = 16 * "00",
         param_picc_data: Optional[str] = None,
@@ -58,6 +60,11 @@ class ParamValidator:
         param_cmac: Optional[str] = None,
         param_cmac_input: Optional[str] = None,
     ):
+        if isinstance(tag_class, str):
+            self.tag_class = Tag.get_tag_module(tag_class).Tag
+        else:
+            self.tag_class = tag_class
+
         self.k_sdm_file_read = unhexlify(k_sdm_file_read)
         self.k_sdm_meta_read = unhexlify(k_sdm_meta_read)
 
