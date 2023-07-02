@@ -113,7 +113,7 @@ def change_file_settings(
     """Change settings for a file on tag"""
     if ctx.obj["json"]:
         with open(ctx.obj["json"], "rt") as json_file:
-            file_settings = ctx.obj["tag_module"].FileSettings.model_validate_json(
+            file_settings = ctx.obj["tag_module"].FileSettings.parse_raw(
                 json_file.read()
             )
     else:

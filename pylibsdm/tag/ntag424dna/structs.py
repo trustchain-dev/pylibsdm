@@ -7,9 +7,10 @@
 from enum import IntEnum
 from logging import getLogger
 from struct import pack, unpack
-from typing import Optional, Self
+from types import SimpleNamespace
+from typing import Any, Optional, Self
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, root_validator
 from pydantic.types import NonNegativeInt, PositiveInt
 
 logger = getLogger(__name__)
@@ -241,10 +242,13 @@ class FileSettings(BaseModel):
     #: Available size for file data
     file_size: Optional[PositiveInt] = None
 
-    @model_validator(mode="after")
-    def _check_combinations(cls, self: Self) -> Self:
+    @root_validator(pre=False, skip_on_failure=True)
+    def _check_combinations(cls, data: dict[str, Any]) -> dict[str, Any]:
         # ref: page 71, table 69
         logger.debug("Validating combinations of SDM options/offsets/lengths")
+
+        # FIXME Workaround to ease migration to Pydantic 2.0 style
+        self = SimpleNamespace(**data)
 
         if self.file_option.sdm_enabled:
             assert (
@@ -317,7 +321,7 @@ class FileSettings(BaseModel):
                 self.read_ctr_limit is not None
             ), "Read counter limit must be given if enabled"
 
-        return self
+        return data
 
     def to_bytes(self) -> bytes:
         """Serialize for wire (e.g. in ChangeFileSettings).
