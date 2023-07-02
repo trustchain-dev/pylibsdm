@@ -51,16 +51,22 @@ applications.
 
 #### Configuring a tag in code
 
-We will configure a tag for the following behaviour:
+`pylibsdm` can be used for arbitrarily complex configurations, but is designed
+to cover the most common use cases with some semantic sugar.
 
- * Change app keys 1 and 2 to our own keys
- * Configure write access to NDEF data to need authentication with app key 1
- * Configure SDM to encrypt and sign data with key 2
- * Mirror encrypted PICC data (UID and read counter)
- * Mirror a CMAC for validation
+In this example, we will configure an NTAG424DNA for the following behaviour:
+
+ * Change app key 1 to our own key
+ * Configure write access to NDEF data to need authentication with app key 0
+ * Configure the NDEF file to mirror UID and read counter encrypted with key 1,
+   and a CMAC using key 1
+
+This is a common configuration allowing a backend to verify tag authenticity
+when the URL is requested with minimal overhead.
 
 ```python
-from pylibsdm.tag.ntag424dna import Tag
+import ndef
+from pylibsdm.tag.ntag424dna import FileSettings, Tag
 
 # We need a working tag object from nfcpy
 nfc_tag = ...
@@ -71,45 +77,26 @@ sdm_tag = Tag(nfc_tag)
 # Set current master app key nr 0 for authentication
 sdm_tag.set_key(0, b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff")
 
-# Change app keys 1 and 2 for later use
+# Change app key 1 for later use
 sdm_tag.change_key(1, 16 * b"\xaa")
-sdm_tag.change_key(2, 16 * b"\xaa")
 
-# Configure attributes for mirroring
-file_option = FileOption(sdm_enabled=True, comm_mode=CommMode.PLAIN)
-sdm_options = SDMOptions(
-    uid=True,
-    read_ctr=True,
-    read_ctr_limit=False,
-    enc_file_data=False,
-    tt_status=False,
-    ascii_encoding=True,
-)
-
-# We configure free reading access of NDEF, writing data is limited to app key 1,
-#  and changing file settings to the master app key 0
-access_rights = AccessRights(
-    read=AccessCondition.FREE_ACCESS,
-    write=AccessCondition.1,
-    read_write=AccessCondition.KEY_1,
-    change=AccessCondition.KEY_0,
-)
-# When reading the NDEF message, app key 2 is used for
+# When reading the NDEF message, app key 1 is used for encryption
 sdm_acceess_rights = SDMAccessRights(
-    file_read=AccessCondition.KEY_2,
-    meta_read=AccessCondition.KEY_2,
-    ctr_ret=AccessCondition.KEY_2,
+    file_read=AccessCondition.KEY_1,
+    meta_read=AccessCondition.KEY_1,
 )
 
-# Aggregate options and offsets in NDEF data
-file_settings = FileSettings(
-    file_option=file_option,
-    access_rights=access_rights,
-    sdm_options=sdm_options,
-    sdm_access_rights=sdm_acceess_rights,
-    picc_data_offset=32,
-    mac_offset=67,
-    mac_input_offset=67,
+# Generate file settings for URL and placeholder URL
+file_settings, file_data = FileSettings(
+    "https://example.com/thing/12",
+    param_picc_data="p",
+    param_cmac="c"
 )
+
+# Change the NDEF file settings to the generated values
 sdm_tag.change_file_settings(2, file_settings)
+
+# Write the generated URL
+#  https://example.com/thing/12?p=00000000000000000000000000000000&c=0000000000000000
+nfc_tag.ndef.records = [ndef.URIRecord(file_data)]
 ```
