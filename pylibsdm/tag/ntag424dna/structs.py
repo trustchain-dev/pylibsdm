@@ -5,10 +5,14 @@
 """Structures for communication with NTAG424DNA"""
 
 from enum import IntEnum
+from logging import getLogger
 from struct import pack, unpack
 from typing import Optional, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+from pydantic.types import NonNegativeInt, PositiveInt
+
+logger = getLogger(__name__)
 
 
 class CommMode(IntEnum):
@@ -215,27 +219,105 @@ class FileSettings(BaseModel):
     sdm_access_rights: Optional[SDMAccessRights] = None
 
     #: Offset to mirror UID at
-    uid_offset: Optional[int] = None
+    uid_offset: Optional[NonNegativeInt] = None
     #: Offset to mirror read counter at
-    read_ctr_offset: Optional[int] = None
+    read_ctr_offset: Optional[NonNegativeInt] = None
     #: Offset to mirror PICC data at
-    picc_data_offset: Optional[int] = None
+    picc_data_offset: Optional[NonNegativeInt] = None
     #: Offset to mirror tag tamper status at
-    tt_status_offset: Optional[int] = None
+    tt_status_offset: Optional[NonNegativeInt] = None
     #: Offset to begin reading CMAC input from
-    mac_input_offset: Optional[int] = None
+    mac_input_offset: Optional[NonNegativeInt] = None
     #: Offset to mirror encrypted fiel data at, and start reading from
-    enc_offset: Optional[int] = None
+    enc_offset: Optional[NonNegativeInt] = None
     #: Length of file data to encrypt
-    enc_length: Optional[int] = None
+    enc_length: Optional[NonNegativeInt] = None
     #: Offset to mirror CMAC at
-    mac_offset: Optional[int] = None
+    mac_offset: Optional[NonNegativeInt] = None
     #: Limit for read counter
-    read_ctr_limit: Optional[int] = None
+    read_ctr_limit: Optional[PositiveInt] = None
 
     file_type: FileType = FileType.STANDARD_DATA
     #: Available size for file data
-    file_size: Optional[int] = None
+    file_size: Optional[PositiveInt] = None
+
+    @model_validator(mode="after")
+    def _check_combinations(cls, self: Self) -> Self:
+        # ref: page 71, table 69
+        logger.debug("Validating combinations of SDM options/offsets/lengths")
+
+        if self.file_option.sdm_enabled:
+            assert (
+                self.sdm_options is not None
+            ), "SDM options must be given if SDM is enabled"
+            assert (
+                self.sdm_access_rights is not None
+            ), "SDM access rights must be given SDM is enabled"
+
+        if (
+            self.sdm_access_rights
+            and self.sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            and self.sdm_options
+        ):
+            if self.sdm_options.uid:
+                assert (
+                    self.uid_offset is not None
+                ), "UID offset must be given if plain UID mirror is enabled"
+            if self.sdm_options.read_ctr:
+                assert (
+                    self.read_ctr_offset is not None
+                ), "Read counter offset must be given if plain read counter mirror is enabled"
+
+        if (
+            self.sdm_access_rights
+            and self.sdm_access_rights.meta_read < AccessCondition.FREE_ACCESS
+        ):
+            assert (
+                self.picc_data_offset is not None
+            ), "PICC data offset must be given if encrypted meta access is enabled"
+
+        if self.sdm_options and self.sdm_options.tt_status:
+            assert (
+                self.tt_status_offset is not None
+            ), "TT status offset must be given if TT status mirror is enabled"
+
+        if (
+            self.sdm_access_rights
+            and self.sdm_access_rights.file_read != AccessCondition.NO_ACCESS
+        ):
+            assert (
+                self.mac_input_offset is not None
+            ), "MAC input offset must be given if file read access is enabled"
+            assert (
+                self.mac_offset is not None
+            ), "MAC offset must be given if file read access is enabled"
+            assert (
+                self.mac_input_offset <= self.mac_offset
+            ), "MAC offset must be less or equal to MAC input offset"
+
+            if self.sdm_options.enc_file_data:
+                assert (
+                    self.enc_offset is not None
+                ), "Enc data offset must be given if enc file data mirror is enabled"
+                assert (
+                    self.enc_length is not None
+                ), "Enc data length must be given if enc file data mirror is enabled"
+                assert (
+                    self.mac_input_offset <= self.enc_offset <= self.mac_offset - 32
+                ), "Enc offset must be >= MAC input offset and <= MAC offset-32"
+                assert (
+                    32 <= self.enc_length <= self.mac_offset - self.enc_offset
+                ), "Enc length must be between 32 and MAC offset - Enc offset"
+                assert (
+                    self.mac_offset >= self.enc_offset + self.enc_length
+                ), "MAC offset must be greater than or equal to Enc offset + Enc length"
+
+        if self.sdm_options and self.sdm_options.read_ctr_limit:
+            assert (
+                self.read_ctr_limit is not None
+            ), "Read counter limit must be given if enabled"
+
+        return self
 
     def to_bytes(self) -> bytes:
         """Serialize for wire (e.g. in ChangeFileSettings).
