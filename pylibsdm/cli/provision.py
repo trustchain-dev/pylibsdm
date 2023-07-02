@@ -89,7 +89,7 @@ def get_file_settings(
             )
             if ctx.obj["json"]:
                 with open(ctx.obj["json"], "wt") as json_file:
-                    json_file.write(file_settings.json(indent=2))
+                    json_file.write(file_settings.model_dump_json(indent=2))
             if not ctx.obj["batch"]:
                 raise typer.Exit(code=0)
         except nfc.tag.TagCommandError as exc:
@@ -113,7 +113,7 @@ def change_file_settings(
     """Change settings for a file on tag"""
     if ctx.obj["json"]:
         with open(ctx.obj["json"], "rt") as json_file:
-            file_settings = ctx.obj["tag_module"].FileSettings.parse_raw(
+            file_settings = ctx.obj["tag_module"].FileSettings.model_validate_json(
                 json_file.read()
             )
     else:
