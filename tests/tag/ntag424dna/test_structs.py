@@ -5,6 +5,8 @@
 import pytest
 from binascii import unhexlify
 
+from typer.models import NoneType
+
 from pylibsdm.tag.ntag424dna.structs import (
     AccessCondition,
     AccessRights,
@@ -55,3 +57,35 @@ def test_file_settings_from_bytes():
 
     assert file_settings.uid_offset == 32
     assert file_settings.read_ctr_offset == 67
+
+
+def test_file_settings_for_url_against_tagwriter():
+    # URL constructed using NXP TagWriter some time ago
+    file_settings, file_data = FileSettings.for_url(
+        "http://172.31.201.52:8000/o/core/person/1?authenticators=nfc_sdm",
+        param_picc_data="picc_data",
+        param_enc_data="enc",
+        param_cmac="cmac",
+        plain_enc_data=16 * "x",
+    )
+
+    assert file_settings.file_option.sdm_enabled
+
+    assert file_settings.sdm_options is not None
+    assert file_settings.sdm_access_rights is not None
+
+    assert file_settings.sdm_options.uid
+    assert file_settings.sdm_options.read_ctr
+    assert file_settings.sdm_options.enc_file_data
+    assert file_settings.sdm_options.ascii_encoding
+
+    assert file_settings.sdm_access_rights.meta_read < AccessCondition.FREE_ACCESS
+    assert file_settings.sdm_access_rights.file_read < AccessCondition.FREE_ACCESS
+
+    assert file_settings.uid_offset is None
+    assert file_settings.read_ctr_offset is None
+    assert file_settings.picc_data_offset == 75
+    assert file_settings.enc_length == 32
+    assert file_settings.enc_offset == 112
+    assert file_settings.mac_input_offset == 75
+    assert file_settings.mac_offset == 150

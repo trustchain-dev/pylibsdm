@@ -9,6 +9,7 @@ from logging import getLogger
 from struct import pack, unpack
 from types import SimpleNamespace
 from typing import Any, ClassVar, Optional, Self
+from urllib.parse import parse_qsl, urldefrag, urlencode, urlparse, urlunparse
 
 from pydantic import BaseModel, root_validator
 from pydantic.types import NonNegativeInt, PositiveInt
@@ -73,13 +74,13 @@ class AccessRights(BaseModel):
     """
 
     #: Selects a key which can read the file data
-    read: AccessCondition
+    read: AccessCondition = AccessCondition.FREE_ACCESS
     #: Selects a key which can write the file data
-    write: AccessCondition
+    write: AccessCondition = AccessCondition.FREE_ACCESS
     #: Selects a key which can both read and write the file data
-    read_write: AccessCondition
+    read_write: AccessCondition = AccessCondition.FREE_ACCESS
     #: Selects a key which can change the file settings
-    change: AccessCondition
+    change: AccessCondition = AccessCondition.KEY_0
 
     def to_bytes(self):
         """Serialize access rights for use on wire (e.g. ChangeFileSettings)."""
@@ -133,15 +134,15 @@ class SDMOptions(BaseModel):
     """
 
     #: Enable UID mirroring
-    uid: bool
+    uid: bool = False
     #: Enable read counter mirroring
-    read_ctr: bool
+    read_ctr: bool = False
     #: Enable limitation for read counter
-    read_ctr_limit: bool
+    read_ctr_limit: bool = False
     #: Enable mirroring of encrypted file data
-    enc_file_data: bool
+    enc_file_data: bool = False
     #: Enable mirroring of tag tamper status
-    tt_status: bool
+    tt_status: bool = False
     #: Enable ASCII encoding of mirrored data
     ascii_encoding: bool = True
 
@@ -183,11 +184,11 @@ class SDMAccessRights(BaseModel):
     """
 
     #: Key allowed to read meta data (UID)
-    meta_read: AccessCondition
+    meta_read: AccessCondition = AccessCondition.NO_ACCESS
     #: Key allowed to read encrypted file data
-    file_read: AccessCondition
+    file_read: AccessCondition = AccessCondition.NO_ACCESS
     #: Key allowed to read counter
-    ctr_ret: AccessCondition
+    ctr_ret: AccessCondition = AccessCondition.NO_ACCESS
 
     def to_bytes(self):
         """Serialize SDM access rights for wire (e.g. in ChangeFileSettings)."""
@@ -238,14 +239,16 @@ class FileSettings(BaseModel):
     #: Limit for read counter
     read_ctr_limit: Optional[PositiveInt] = None
 
+    # FIXME get file attributes reliably
     file_type: FileType = FileType.STANDARD_DATA
     #: Available size for file data
-    file_size: Optional[PositiveInt] = None
+    file_size: PositiveInt = 256
 
     # ASCII armored hex bytes
+    # FIXME do we need to get these dynamically? do they differ betwwen tags?
     uid_length: ClassVar[int] = 14
     read_ctr_length: ClassVar[int] = 6
-    picc_data_length: ClassVar[int] = 16
+    picc_data_length: ClassVar[int] = 32
 
     @root_validator(pre=False, skip_on_failure=True)
     def _check_combinations(cls, data: dict[str, Any]) -> dict[str, Any]:
@@ -357,12 +360,17 @@ class FileSettings(BaseModel):
                 assert (
                     self.enc_length is not None
                 ), "Enc data length must be given if enc file data mirror is enabled"
+                assert self.enc_length >= 32, "Enc length must be at least 32"
                 assert (
-                    self.mac_input_offset <= self.enc_offset <= self.mac_offset - 32
-                ), "Enc offset must be >= MAC input offset and <= MAC offset-32"
+                    self.mac_input_offset
+                    <= self.enc_offset
+                    <= self.mac_offset - self.enc_length
+                ), "Enc offset must be >= MAC input offset and <= MAC offset-enc length"
                 assert (
-                    32 <= self.enc_length <= self.mac_offset - self.enc_offset
-                ), "Enc length must be between 32 and MAC offset - Enc offset"
+                    self.enc_length
+                    <= self.enc_length
+                    <= self.mac_offset - self.enc_offset
+                ), "Enc length must be between enc length and MAC offset - Enc offset"
                 assert (
                     self.mac_offset >= self.enc_offset + self.enc_length
                 ), "MAC offset must be greater than or equal to Enc offset + Enc length"
@@ -514,3 +522,110 @@ class FileSettings(BaseModel):
             file_type=file_type,
             file_size=file_size,
         )
+
+    @classmethod
+    def for_url(
+        cls,
+        base_url: str,
+        param_uid: Optional[str] = None,
+        param_read_ctr: Optional[str] = None,
+        param_picc_data: Optional[str] = None,
+        param_enc_data: Optional[str] = None,
+        param_cmac: Optional[str] = None,
+        plain_enc_data: Optional[str] = None,
+        access_rights: Optional[AccessRights] = None,
+        sdm_options: Optional[SDMOptions] = None,
+        sdm_access_rights: Optional[SDMAccessRights] = None,
+    ) -> tuple[Self, str]:
+        """Construct file settings for a desired URL to write to a tag.
+
+        This method is the counterpart for
+        :class:`pylibsdm.backend.validate.ParamValidator`
+        and constructs a URL that can be validated with it
+        if the same set of araguments is passed.
+        """
+        # FIXME Move to a generic location
+
+        url, fragment = urldefrag(base_url)
+        url = urlparse(url)
+        params = parse_qsl(url.query)
+
+        next_offset = len(urlunparse(url)) + 1
+
+        file_option = FileOption(sdm_enabled=True, comm_mode=CommMode.PLAIN)
+        access_rights = access_rights or AccessRights()
+        sdm_options = sdm_options or SDMOptions()
+        sdm_access_rights = sdm_access_rights or SDMAccessRights()
+        file_settings = {}
+
+        if param_uid:
+            params.append((param_uid, cls.uid_length * "0"))
+            sdm_options.uid = True
+            file_settings["uid_offset"] = next_offset + len(param_uid) + 1
+            next_offset += len(param_uid) + cls.uid_length + 2
+            sdm_access_rights.meta_read = AccessCondition.FREE_ACCESS
+
+        if param_read_ctr:
+            params.append((param_read_ctr, cls.read_ctr_length * "0"))
+            sdm_options.read_ctr = True
+            file_settings["read_ctr_offset"] = next_offset + len(param_read_ctr) + 1
+            next_offset += len(param_read_ctr) + cls.read_ctr_length + 2
+            sdm_access_rights.meta_read = AccessCondition.FREE_ACCESS
+
+        if param_picc_data:
+            if param_uid or param_read_ctr:
+                raise ValueError(
+                    "PICC data cannot be combined with plain UID or read counter"
+                )
+            params.append((param_picc_data, cls.picc_data_length * "0"))
+            sdm_options.uid = True
+            sdm_options.read_ctr = True
+            file_settings["picc_data_offset"] = next_offset + len(param_picc_data) + 1
+            next_offset += len(param_picc_data) + cls.picc_data_length + 2
+            if sdm_access_rights.meta_read >= AccessCondition.FREE_ACCESS:
+                sdm_access_rights.meta_read = AccessCondition.KEY_0
+
+        if param_enc_data:
+            if not plain_enc_data:
+                raise ValueError(
+                    "Plain enc data must be provided to use enc data in URL"
+                )
+            if len(plain_enc_data) % 16 > 0:
+                plain_enc_data += (16 - (len(plain_enc_data) % 16)) * "0"
+            params.append((param_enc_data, plain_enc_data + len(plain_enc_data) * "0"))
+            sdm_options.enc_file_data = True
+            file_settings["enc_length"] = len(plain_enc_data) * 2
+            file_settings["enc_offset"] = next_offset + len(param_enc_data) + 1
+            next_offset += len(param_enc_data) + len(plain_enc_data) * 2 + 2
+            if sdm_access_rights.file_read == AccessCondition.NO_ACCESS:
+                sdm_access_rights.file_read = AccessCondition.KEY_0
+
+        if param_cmac:
+            params.append((param_cmac, 16 * "0"))
+            file_settings["mac_offset"] = next_offset + len(param_cmac) + 1
+            next_offset += len(param_cmac) + 16 * 2
+            if sdm_access_rights.file_read == AccessCondition.NO_ACCESS:
+                sdm_access_rights.file_read = AccessCondition.KEY_0
+
+            if param_uid:
+                file_settings["mac_input_offset"] = file_settings["uid_offset"]
+            elif param_read_ctr:
+                file_settings["mac_input_offset"] = file_settings["read_ctr_offset"]
+            elif param_picc_data:
+                file_settings["mac_input_offset"] = file_settings["picc_data_offset"]
+            elif param_enc_data:
+                file_settings["mac_input_offset"] = file_settings["enc_offset"]
+            else:
+                file_settings["mac_input_offset"] = file_settings["mac_offset"]
+
+        file_settings = FileSettings(
+            file_option=file_option,
+            access_rights=access_rights,
+            sdm_options=sdm_options,
+            sdm_access_rights=sdm_access_rights,
+            **file_settings,
+        )
+
+        file_url = url._replace(query=urlencode(params), fragment=fragment or None)
+
+        return file_settings, urlunparse(file_url)
