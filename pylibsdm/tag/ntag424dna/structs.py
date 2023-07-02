@@ -8,7 +8,7 @@ from enum import IntEnum
 from logging import getLogger
 from struct import pack, unpack
 from types import SimpleNamespace
-from typing import Any, Optional, Self
+from typing import Any, ClassVar, Optional, Self
 
 from pydantic import BaseModel, root_validator
 from pydantic.types import NonNegativeInt, PositiveInt
@@ -242,6 +242,11 @@ class FileSettings(BaseModel):
     #: Available size for file data
     file_size: Optional[PositiveInt] = None
 
+    # ASCII armored hex bytes
+    uid_length: ClassVar[int] = 14
+    read_ctr_length: ClassVar[int] = 6
+    picc_data_length: ClassVar[int] = 16
+
     @root_validator(pre=False, skip_on_failure=True)
     def _check_combinations(cls, data: dict[str, Any]) -> dict[str, Any]:
         # ref: page 71, table 69
@@ -267,10 +272,23 @@ class FileSettings(BaseModel):
                 assert (
                     self.uid_offset is not None
                 ), "UID offset must be given if plain UID mirror is enabled"
+                assert (
+                    self.uid_offset <= self.file_size - cls.uid_length
+                ), "UID does nto fit into file"
             if self.sdm_options.read_ctr:
                 assert (
                     self.read_ctr_offset is not None
                 ), "Read counter offset must be given if plain read counter mirror is enabled"
+                assert (
+                    self.read_ctr_offset <= self.file_size - cls.read_ctr_length
+                ), "Read coutner does not fit into file"
+
+            if self.sdm_options.uid and self.sdm_options.read_ctr:
+                # ref: page 37, chapter 9.3.3
+                assert (
+                    self.uid_offset >= self.read_ctr_offset + cls.read_ctr_length
+                    or self.read_ctr_offset >= self.uid_offset + cls.uid_length
+                ), "UID and read counter must not overlap"
 
         if (
             self.sdm_access_rights
@@ -280,10 +298,43 @@ class FileSettings(BaseModel):
                 self.picc_data_offset is not None
             ), "PICC data offset must be given if encrypted meta access is enabled"
 
+            assert self.picc_data_offset <= self.file_size - cls.picc_data_length
+
+            if (
+                self.sdm_options.uid
+                and self.sdm_access_rights
+                and self.sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            ):
+                # ref: page 40, chapter 9.3.6
+                assert (
+                    self.uid_offset >= self.picc_data_offset + cls.picc_data_length
+                    or self.picc_data_offset >= self.uid_offset + cls.uid_length
+                ), "PICC data and UID must not overlap"
+            if (
+                self.sdm_options.read_ctr
+                and self.sdm_access_rights
+                and self.sdm_access_rights.meta_read == AccessCondition.FREE_ACCESS
+            ):
+                # ref: page 40, chapter 9.3.6
+                assert (
+                    self.read_ctr_offset >= self.picc_data_offset + cls.picc_data_length
+                    or self.picc_data_offset
+                    >= self.read_ctr_offset + cls.read_ctr_length
+                ), "PICC data and read counter must not overlap"
+            if self.sdm_options.enc_file_data:
+                # ref: page 40, chapter 9.3.6
+                assert (
+                    self.enc_offset >= self.picc_data_offset + cls.picc_data_length
+                    or self.picc_data_offset >= self.enc_offset + self.enc_length
+                ), "PICC data and Enc data must not overlap"
+
         if self.sdm_options and self.sdm_options.tt_status:
             assert (
                 self.tt_status_offset is not None
             ), "TT status offset must be given if TT status mirror is enabled"
+            assert (
+                self.tt_status_offset <= self.file_size - 2
+            ), "TT status does not fit into file"
 
         if (
             self.sdm_access_rights
