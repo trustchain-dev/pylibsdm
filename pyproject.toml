@@ -5,7 +5,7 @@ description = "Python library for handling Secure Dynamic Messaging (SDM) of NFC
 authors = ["Dominik George <nik@naturalnet.de>"]
 repository = "https://codeberg.org/Bergblau/pylibsdm"
 license = "Apache-2.0"
-keywords = ["nfc", "ntag424", "an12196"]
+keywords = ["nfc", "ntag424"]
 readme = "README.md"
 classifiers = [
   "Development Status :: 3 - Alpha",
