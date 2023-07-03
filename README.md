@@ -75,7 +75,7 @@ nfc_tag = ...
 sdm_tag = Tag(nfc_tag)
 
 # Set current master app key nr 0 for authentication
-sdm_tag.set_key(0, b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff")
+sdm_tag.set_key(0, bytes.fromhex("00112233445566778899aabbccddeeff"))
 
 # Change app key 1 for later use
 sdm_tag.change_key(1, 16 * b"\xaa")
