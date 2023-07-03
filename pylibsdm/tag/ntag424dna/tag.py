@@ -27,27 +27,20 @@ LOGGER = logging.getLogger(__name__)
 
 
 class NTAG424DNA(Tag):
-    tag: Type4Tag
+    _num_keys = 5
+
     cmdctr: int
     ti: bytes
     current_key_nr: int
     k_ses_auth_enc: bytes
     k_ses_auth_mac: bytes
 
-    _keys: list[bytes]
-
     _prefix_ivc: ClassVar[bytes] = b"\xa5\x5a"
     _prefix_ivr: ClassVar[bytes] = b"\x5a\xa5"
 
-    def __init__(self, tag: Type4Tag):
-        self.tag = tag
-
-        self.reset_keys()
+    def __init__(self, tag: Type4Tag, **kwargs):
+        super().__init__(tag, **kwargs)
         self.reset_session()
-
-    def reset_keys(self):
-        LOGGER.debug("Resetting keys to NULL")
-        self._keys = [16 * b"\0"] * 5
 
     def reset_session(self):
         LOGGER.debug("Resetting transaction id, command counter and session keys")
@@ -56,13 +49,6 @@ class NTAG424DNA(Tag):
         self.current_key_nr = 0
         self.k_ses_auth_enc = 16 * b"\0"
         self.k_ses_auth_mac = 16 * b"\0"
-
-    def set_key(self, key_nr: int, key: bytes):
-        if key_nr >= len(self._keys):
-            raise IndexError("Key number out of range")
-
-        LOGGER.debug("Setting key nr %d", key_nr)
-        self._keys[key_nr] = key
 
     @property
     def ivc(self) -> bytes:

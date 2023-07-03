@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
 import logging
+from binascii import unhexlify
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Optional
@@ -35,7 +36,10 @@ def configure_provision(
     """Provision (configure) NFC tokens for SDM usage"""
     ctx.obj["tag_module"] = Tag.get_tag_module(tag_module)
 
-    # TODO handle keys
+    ctx.obj["keys"] = {}
+    for slot_key in key or []:
+        slot, key_hex = slot_key.split(":")
+        ctx.obj["keys"][int(slot)] = unhexlify(key_hex)
 
     ctx.obj["json"] = json
 
@@ -71,7 +75,9 @@ def auth(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_module"].Tag.connect_loop(ctx.obj["clf"], _do_auth)
+        ctx.obj["tag_module"].Tag.connect_loop(
+            ctx.obj["clf"], _do_auth, keys=ctx.obj["keys"]
+        )
 
 
 @app.command()
@@ -101,7 +107,9 @@ def get_file_settings(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_module"].Tag.connect_loop(ctx.obj["clf"], _do_get_file_settings)
+        ctx.obj["tag_module"].Tag.connect_loop(
+            ctx.obj["clf"], _do_get_file_settings, keys=ctx.obj["keys"]
+        )
 
 
 @app.command()
@@ -137,4 +145,6 @@ def change_file_settings(
 
     while True:
         # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_module"].Tag.connect_loop(ctx.obj["clf"], _do_change_file_settings)
+        ctx.obj["tag_module"].Tag.connect_loop(
+            ctx.obj["clf"], _do_change_file_settings, keys=ctx.obj["keys"]
+        )
