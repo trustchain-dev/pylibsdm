@@ -14,6 +14,12 @@ from urllib.parse import parse_qsl, urldefrag, urlencode, urlparse, urlunparse
 from pydantic import BaseModel, root_validator
 from pydantic.types import NonNegativeInt, PositiveInt
 
+from ..structs import (
+    FileSettings as BaseFileSettings,
+    URLParamConfig as BaseURLParamConfig,
+)
+
+
 logger = getLogger(__name__)
 
 
@@ -209,7 +215,19 @@ class SDMAccessRights(BaseModel):
 # FIXME maybe implement standard files, table 8 et al
 
 
-class FileSettings(BaseModel):
+class URLParamConfig(BaseURLParamConfig):
+    param_uid: Optional[str] = None
+    param_read_ctr: Optional[str] = None
+    param_picc_data: Optional[str] = None
+    param_enc_data: Optional[str] = None
+    param_cmac: Optional[str] = None
+    plain_enc_data: Optional[str] = None
+    access_rights: Optional[AccessRights] = None
+    sdm_options: Optional[SDMOptions] = None
+    sdm_access_rights: Optional[SDMAccessRights] = None
+
+
+class FileSettings(BaseFileSettings):
     """Container for all settings of a data file.
 
     Defined in spec on page 75, table 73.
@@ -524,19 +542,7 @@ class FileSettings(BaseModel):
         )
 
     @classmethod
-    def for_url(
-        cls,
-        base_url: str,
-        param_uid: Optional[str] = None,
-        param_read_ctr: Optional[str] = None,
-        param_picc_data: Optional[str] = None,
-        param_enc_data: Optional[str] = None,
-        param_cmac: Optional[str] = None,
-        plain_enc_data: Optional[str] = None,
-        access_rights: Optional[AccessRights] = None,
-        sdm_options: Optional[SDMOptions] = None,
-        sdm_access_rights: Optional[SDMAccessRights] = None,
-    ) -> tuple[Self, str]:
+    def for_url(cls, config: URLParamConfig) -> tuple[Self, str]:
         """Construct file settings for a desired URL to write to a tag.
 
         This method is the counterpart for
@@ -546,74 +552,85 @@ class FileSettings(BaseModel):
         """
         # FIXME Move to a generic location
 
-        url, fragment = urldefrag(base_url)
+        url, fragment = urldefrag(str(config.base_url))
         url = urlparse(url)
         params = parse_qsl(url.query)
 
         next_offset = len(urlunparse(url)) + 1
 
         file_option = FileOption(sdm_enabled=True, comm_mode=CommMode.PLAIN)
-        access_rights = access_rights or AccessRights()
-        sdm_options = sdm_options or SDMOptions()
-        sdm_access_rights = sdm_access_rights or SDMAccessRights()
+        access_rights = config.access_rights or AccessRights()
+        sdm_options = config.sdm_options or SDMOptions()
+        sdm_access_rights = config.sdm_access_rights or SDMAccessRights()
         file_settings = {}
 
-        if param_uid:
-            params.append((param_uid, cls.uid_length * "0"))
+        if config.param_uid:
+            params.append((config.param_uid, cls.uid_length * "0"))
             sdm_options.uid = True
-            file_settings["uid_offset"] = next_offset + len(param_uid) + 1
-            next_offset += len(param_uid) + cls.uid_length + 2
+            file_settings["uid_offset"] = next_offset + len(config.param_uid) + 1
+            next_offset += len(config.param_uid) + cls.uid_length + 2
             sdm_access_rights.meta_read = AccessCondition.FREE_ACCESS
 
-        if param_read_ctr:
-            params.append((param_read_ctr, cls.read_ctr_length * "0"))
+        if config.param_read_ctr:
+            params.append((config.param_read_ctr, cls.read_ctr_length * "0"))
             sdm_options.read_ctr = True
-            file_settings["read_ctr_offset"] = next_offset + len(param_read_ctr) + 1
-            next_offset += len(param_read_ctr) + cls.read_ctr_length + 2
+            file_settings["read_ctr_offset"] = (
+                next_offset + len(config.param_read_ctr) + 1
+            )
+            next_offset += len(config.param_read_ctr) + cls.read_ctr_length + 2
             sdm_access_rights.meta_read = AccessCondition.FREE_ACCESS
 
-        if param_picc_data:
-            if param_uid or param_read_ctr:
+        if config.param_picc_data:
+            if config.param_uid or config.param_read_ctr:
                 raise ValueError(
                     "PICC data cannot be combined with plain UID or read counter"
                 )
-            params.append((param_picc_data, cls.picc_data_length * "0"))
+            params.append((config.param_picc_data, cls.picc_data_length * "0"))
             sdm_options.uid = True
             sdm_options.read_ctr = True
-            file_settings["picc_data_offset"] = next_offset + len(param_picc_data) + 1
-            next_offset += len(param_picc_data) + cls.picc_data_length + 2
+            file_settings["picc_data_offset"] = (
+                next_offset + len(config.param_picc_data) + 1
+            )
+            next_offset += len(config.param_picc_data) + cls.picc_data_length + 2
             if sdm_access_rights.meta_read >= AccessCondition.FREE_ACCESS:
                 sdm_access_rights.meta_read = AccessCondition.KEY_0
 
-        if param_enc_data:
-            if not plain_enc_data:
+        if config.param_enc_data:
+            if not config.plain_enc_data:
                 raise ValueError(
                     "Plain enc data must be provided to use enc data in URL"
                 )
-            if len(plain_enc_data) % 16 > 0:
-                plain_enc_data += (16 - (len(plain_enc_data) % 16)) * "0"
-            params.append((param_enc_data, plain_enc_data + len(plain_enc_data) * "0"))
+            if len(config.plain_enc_data) % 16 > 0:
+                config.plain_enc_data += (16 - (len(config.plain_enc_data) % 16)) * "0"
+            params.append(
+                (
+                    config.param_enc_data,
+                    config.plain_enc_data + len(config.plain_enc_data) * "0",
+                )
+            )
             sdm_options.enc_file_data = True
-            file_settings["enc_length"] = len(plain_enc_data) * 2
-            file_settings["enc_offset"] = next_offset + len(param_enc_data) + 1
-            next_offset += len(param_enc_data) + len(plain_enc_data) * 2 + 2
+            file_settings["enc_length"] = len(config.plain_enc_data) * 2
+            file_settings["enc_offset"] = next_offset + len(config.param_enc_data) + 1
+            next_offset += (
+                len(config.param_enc_data) + len(config.plain_enc_data) * 2 + 2
+            )
             if sdm_access_rights.file_read == AccessCondition.NO_ACCESS:
                 sdm_access_rights.file_read = AccessCondition.KEY_0
 
-        if param_cmac:
-            params.append((param_cmac, 16 * "0"))
-            file_settings["mac_offset"] = next_offset + len(param_cmac) + 1
-            next_offset += len(param_cmac) + 16 * 2
+        if config.param_cmac:
+            params.append((config.param_cmac, 16 * "0"))
+            file_settings["mac_offset"] = next_offset + len(config.param_cmac) + 1
+            next_offset += len(config.param_cmac) + 16 * 2
             if sdm_access_rights.file_read == AccessCondition.NO_ACCESS:
                 sdm_access_rights.file_read = AccessCondition.KEY_0
 
-            if param_uid:
+            if config.param_uid:
                 file_settings["mac_input_offset"] = file_settings["uid_offset"]
-            elif param_read_ctr:
+            elif config.param_read_ctr:
                 file_settings["mac_input_offset"] = file_settings["read_ctr_offset"]
-            elif param_picc_data:
+            elif config.param_picc_data:
                 file_settings["mac_input_offset"] = file_settings["picc_data_offset"]
-            elif param_enc_data:
+            elif config.param_enc_data:
                 file_settings["mac_input_offset"] = file_settings["enc_offset"]
             else:
                 file_settings["mac_input_offset"] = file_settings["mac_offset"]

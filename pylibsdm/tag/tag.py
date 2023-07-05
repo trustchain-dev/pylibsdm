@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
 import logging
+from enum import StrEnum
 from importlib import import_module
 from importlib.metadata import entry_points
 from typing import Any, Callable, ClassVar, Optional
@@ -54,6 +55,12 @@ class Tag:
         if not cls._tag_modules:
             cls.load_tag_modules()
         return cls._tag_modules
+
+    @classmethod
+    def get_tag_modules_enum(cls):
+        return StrEnum(
+            "TagModule", {name: name for name in cls.get_tag_modules().keys()}
+        )
 
     @classmethod
     def get_tag_module(cls, name: str) -> Any:

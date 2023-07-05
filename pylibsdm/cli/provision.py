@@ -4,7 +4,6 @@
 
 import logging
 from binascii import unhexlify
-from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -14,7 +13,7 @@ from rich.pretty import pretty_repr
 
 from ..tag.tag import Tag
 
-TagModule = StrEnum("TagModule", {name: name for name in Tag.get_tag_modules().keys()})
+TagModule = Tag.get_tag_modules_enum()
 
 app = typer.Typer()
 
