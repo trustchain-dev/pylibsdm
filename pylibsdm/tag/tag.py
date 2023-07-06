@@ -11,6 +11,7 @@ from typing import Any, Callable, ClassVar, Optional
 import nfc
 from nfc.tag.tt4 import Type4Tag
 
+from .structs import FileSettings
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,12 @@ class Tag:
 
         logger.debug("Setting key nr %d", key_nr)
         self._keys[key_nr] = key
+
+    def change_key(self, key_nr: int, new_key: bytes, version: int = 1) -> bool:
+        raise NotImplementedError()
+
+    def change_file_settings(self, file_nr: int, file_settings: FileSettings):
+        raise NotImplementedError()
 
     @classmethod
     def load_tag_modules(cls):

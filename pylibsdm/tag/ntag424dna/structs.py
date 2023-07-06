@@ -215,18 +215,6 @@ class SDMAccessRights(BaseModel):
 # FIXME maybe implement standard files, table 8 et al
 
 
-class URLParamConfig(BaseURLParamConfig):
-    param_uid: Optional[str] = None
-    param_read_ctr: Optional[str] = None
-    param_picc_data: Optional[str] = None
-    param_enc_data: Optional[str] = None
-    param_cmac: Optional[str] = None
-    plain_enc_data: Optional[str] = None
-    access_rights: Optional[AccessRights] = None
-    sdm_options: Optional[SDMOptions] = None
-    sdm_access_rights: Optional[SDMAccessRights] = None
-
-
 class FileSettings(BaseFileSettings):
     """Container for all settings of a data file.
 
@@ -542,7 +530,7 @@ class FileSettings(BaseFileSettings):
         )
 
     @classmethod
-    def for_url(cls, config: URLParamConfig) -> tuple[Self, str]:
+    def for_url(cls, config: "URLParamConfig") -> tuple[Self, str]:
         """Construct file settings for a desired URL to write to a tag.
 
         This method is the counterpart for
@@ -646,3 +634,18 @@ class FileSettings(BaseFileSettings):
         file_url = url._replace(query=urlencode(params), fragment=fragment or None)
 
         return file_settings, urlunparse(file_url)
+
+
+class URLParamConfig(BaseURLParamConfig):
+    param_uid: Optional[str] = None
+    param_read_ctr: Optional[str] = None
+    param_picc_data: Optional[str] = None
+    param_enc_data: Optional[str] = None
+    param_cmac: Optional[str] = None
+    plain_enc_data: Optional[str] = None
+    access_rights: Optional[AccessRights] = None
+    sdm_options: Optional[SDMOptions] = None
+    sdm_access_rights: Optional[SDMAccessRights] = None
+
+    def get_file_settings(self) -> "FileSettings":
+        return FileSettings.for_url(self)[0]

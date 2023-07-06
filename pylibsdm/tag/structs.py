@@ -12,6 +12,9 @@ class URLParamConfig(BaseModel):
 
     base_url: AnyHttpUrl
 
+    def get_file_settings(self) -> "FileSettings":
+        raise NotImplementedError()
+
 
 class FileSettings(BaseModel):
     @classmethod
