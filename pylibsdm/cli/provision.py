@@ -44,42 +44,6 @@ def configure_provision(
 
 
 @app.command()
-def auth(
-    ctx: typer.Context,
-    key_nr: int = typer.Argument(help="Key slot number to test auth with"),
-):
-    """Test authentication with a key number"""
-
-    def _do_auth(tag: Tag) -> bool:
-        msg = "unknown failure"
-        try:
-            # FIXME support dynamic authentication commands
-            res = tag.authenticate_ev2_first(key_nr)
-        except nfc.tag.TagCommandError as exc:
-            res = False
-            msg = str(exc)
-
-        if res:
-            logger.info("Authentication with key number %d successful.", key_nr)
-            if not ctx.obj["batch"]:
-                raise typer.Exit(code=0)
-        else:
-            logger.error(
-                "Authentication with key number %d unsuccessful: %s", key_nr, msg
-            )
-            if not ctx.obj["batch"]:
-                raise typer.Exit(code=1)
-
-        return True
-
-    while True:
-        # FIXME add timeout; possibly move elsewhere
-        ctx.obj["tag_module"].Tag.connect_loop(
-            ctx.obj["clf"], _do_auth, keys=ctx.obj["keys"]
-        )
-
-
-@app.command()
 def get_file_settings(
     ctx: typer.Context,
     file_nr: int = typer.Argument(help="File number to retrieve settings for"),
