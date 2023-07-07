@@ -10,6 +10,7 @@ from .structs import (
     FileSettings,
     SDMAccessRights,
     SDMOptions,
+    URLParamConfig,
 )
 from .tag import NTAG424DNA as Tag
 
@@ -22,4 +23,5 @@ __all__ = [
     "SDMAccessRights",
     "SDMOptions",
     "Tag",
+    "URLParamConfig",
 ]
