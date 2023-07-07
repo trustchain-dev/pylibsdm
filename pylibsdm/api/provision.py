@@ -63,7 +63,7 @@ class ProvisionJob(BaseModel):
 
     def run(self, nfc_tag: nfc.tag.Tag) -> ProvisionResult:
         """Provision one tag"""
-        logger.info("Provisioning tag ", str(nfc_tag))
+        logger.info("Provisioning tag %s", str(nfc_tag))
         # FIXME error handling, ProvisionResult generation
         # FIXME should we get an sdm_tag directly?
         sdm_tag: Tag = Tag.get_tag_module(self.tag_config.tag_module).Tag(
