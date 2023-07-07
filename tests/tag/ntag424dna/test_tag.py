@@ -156,7 +156,8 @@ def test_authenticate_ev2_first_key_3(sdm_tag):
         "pylibsdm.tag.ntag424dna.tag.get_random_bytes",
         return_value=unhexlify("B98F4C50CF1C2E084FD150E33992B048"),
     ):
-        sdm_tag.authenticate_ev2_first(3)
+        sdm_tag.reset_session(3)
+        sdm_tag.authenticate_ev2_first()
 
     assert sdm_tag.tag.apdus_called == [
         "00A4040C07D276000085010100",

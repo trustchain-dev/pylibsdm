@@ -38,15 +38,15 @@ class NTAG424DNA(Tag):
     _prefix_ivc: ClassVar[bytes] = b"\xa5\x5a"
     _prefix_ivr: ClassVar[bytes] = b"\x5a\xa5"
 
-    def __init__(self, tag: Type4Tag, **kwargs):
-        super().__init__(tag, **kwargs)
+    def __init__(self, tag: Type4Tag, *args, **kwargs):
+        super().__init__(tag, *args, **kwargs)
         self.reset_session()
 
-    def reset_session(self):
+    def reset_session(self, current_key_nr: int = 0):
         LOGGER.debug("Resetting transaction id, command counter and session keys")
         self.cmdctr = 0
         self.ti = 4 * b"\0"
-        self.current_key_nr = 0
+        self.current_key_nr = current_key_nr
         self.k_ses_auth_enc = 16 * b"\0"
         self.k_ses_auth_mac = 16 * b"\0"
 
@@ -106,7 +106,6 @@ class NTAG424DNA(Tag):
 
     def send_command_mac(
         self,
-        key_nr: int,
         command: "CommandHeader",
         hdr: bytes,
         data: bytes,
@@ -116,7 +115,7 @@ class NTAG424DNA(Tag):
         # ref: page 28, chapter 9.1.9
         if self.ti == 4 * b"\0":
             LOGGER.info("Not authenticated for command mode FULL; authenticating")
-            self.authenticate_ev2_first(key_nr)
+            self.authenticate_ev2_first()
 
         LOGGER.debug(
             "MAC: command %s, counter %d, TI %s, hdr %s, data %s",
@@ -136,7 +135,7 @@ class NTAG424DNA(Tag):
         try:
             res = self.send_command_plain(command, hdr, data + cmact, mrl, expected)
         except Type4TagCommandError:
-            self.reset_session()
+            self.reset_session(self.current_key_nr)
             raise
 
         LOGGER.debug("Incrementing command counter")
@@ -171,7 +170,6 @@ class NTAG424DNA(Tag):
 
     def send_command_full(
         self,
-        key_nr: int,
         command: "CommandHeader",
         hdr: bytes,
         data: bytes,
@@ -180,16 +178,16 @@ class NTAG424DNA(Tag):
     ) -> bytes:
         if self.ti == 4 * b"\0":
             LOGGER.info("Not authenticated for command mode FULL; authenticating")
-            self.authenticate_ev2_first(key_nr)
+            self.authenticate_ev2_first()
 
         LOGGER.debug("ENC: payload %s", hexlify(data))
         cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivc)
         encrypted = cipher.encrypt(pad(data, 16, style="iso7816"))
 
         try:
-            res = self.send_command_mac(key_nr, command, hdr, encrypted, mrl, expected)
+            res = self.send_command_mac(command, hdr, encrypted, mrl, expected)
         except Type4TagCommandError:
-            self.reset_session()
+            self.reset_session(self.current_key_nr)
             raise
 
         if res:
@@ -205,7 +203,7 @@ class NTAG424DNA(Tag):
     def select_application(self, aid: "Application"):
         LOGGER.debug("Selecting application %s", hexlify(aid.value))
         self.send_command_plain(CommandHeader.ISO_SELECT_NDEF_APP, data=aid.value)
-        self.reset_session()
+        self.reset_session(self.current_key_nr)
 
     def derive_challenge_response(
         self, key: bytes, e_rndb: bytes
@@ -251,18 +249,20 @@ class NTAG424DNA(Tag):
 
         return k_ses_auth_enc, k_ses_auth_mac
 
-    def authenticate_ev2_first(self, key_nr: int = 0) -> bool:
+    def authenticate_ev2_first(self) -> bool:
         # ref: page 50, chapter 11.4.1
         self.select_application(Application.NDEF)
-        self.reset_session()
+        self.reset_session(self.current_key_nr)
 
-        LOGGER.debug("AUTH: Doing EV2 authentication with key nr %d", key_nr)
+        LOGGER.debug(
+            "AUTH: Doing EV2 authentication with key nr %d", self.current_key_nr
+        )
 
-        key = self._keys[key_nr]
+        key = self._keys[self.current_key_nr]
 
         e_rndb = self.send_command_plain(
             CommandHeader.AUTH_EV2_FIRST,
-            pack("<H", key_nr),
+            pack("<H", self.current_key_nr),
             b"",
             expected=Status.ADDITIONAL_DF_EXPECTED,
         )
@@ -294,20 +294,18 @@ class NTAG424DNA(Tag):
         self.k_ses_auth_enc, self.k_ses_auth_mac = self.derive_session_keys(
             key, rnda, rndb
         )
-        self.current_key_nr = key_nr
-        LOGGER.debug("AUTH: Set current key nr to %d", key_nr)
 
         return True
 
-    def authenticate_ev2_non_first(self, key_nr: int = 0) -> bool:
+    def authenticate_ev2_non_first(self) -> bool:
         # ref: page 53, capter 11.4.2
         raise NotImplementedError()
 
-    def authenticate_lrp_first(self, key_nr: int = 0) -> bool:
+    def authenticate_lrp_first(self) -> bool:
         # ref: page 55, capter 11.4.3
         raise NotImplementedError()
 
-    def authenticate_lrp_non_first(self, key_nr: int = 0) -> bool:
+    def authenticate_lrp_non_first(self) -> bool:
         # ref: page 57, capter 11.4.4
         raise NotImplementedError()
 
@@ -325,10 +323,9 @@ class NTAG424DNA(Tag):
 
     def change_key(self, key_nr: int, new_key: bytes, version: int = 1) -> bool:
         # ref: page 67, chapter 11.6.1
-        LOGGER.debug("Changing key nr %d using same key for auth", key_nr)
+        LOGGER.debug("Changing key nr %d", key_nr)
 
         self.send_command_full(
-            key_nr,
             CommandHeader.CHANGE_KEY,
             key_nr.to_bytes(),
             new_key + version.to_bytes(),
@@ -347,7 +344,6 @@ class NTAG424DNA(Tag):
 
         # FIXME make key number selectable
         data = self.send_command_mac(
-            0,
             CommandHeader.GET_FILE_SETTINGS,
             file_nr.to_bytes(),
             b"",
@@ -366,7 +362,6 @@ class NTAG424DNA(Tag):
 
         # FIXME make key number selectable
         self.send_command_full(
-            0,
             CommandHeader.CHANGE_FILE_SETTINGS,
             file_nr.to_bytes(),
             settings_data,
