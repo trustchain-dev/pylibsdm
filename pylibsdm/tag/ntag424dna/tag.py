@@ -16,6 +16,7 @@ from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad
+from crc import Calculator, Configuration
 from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
 
 from ...util import NULL_IV, bytes_xor
@@ -77,6 +78,18 @@ class NTAG424DNA(Tag):
         return cipher.encrypt(
             self._prefix_ivr + self.ti + pack("<H", self.cmdctr) + 8 * b"\0"
         )
+
+    def crc(self, data: bytes) -> bytes:
+        config = Configuration(
+            width=32,
+            polynomial=0x04C11DB7,
+            init_value=0xFFFFFFFF,
+            final_xor_value=0x00,
+            reverse_output=True,
+            reverse_input=True,
+        )
+        jamcrc = Calculator(config)
+        return pack("<L", jamcrc.checksum(data))
 
     def send_command_plain(
         self,
@@ -325,13 +338,25 @@ class NTAG424DNA(Tag):
         # ref: page 67, chapter 11.6.1
         LOGGER.debug("Changing key nr %d", key_nr)
 
+        if self.current_key_nr == key_nr:
+            LOGGER.debug("Authenticated as same key to be changed")
+            key_data = new_key + version.to_bytes()
+        else:
+            LOGGER.debug("Authenticated as different key than that to be changed")
+            key_data = (
+                bytes_xor(new_key, self._keys[key_nr])
+                + version.to_bytes()
+                + self.crc(new_key)
+            )
+
         self.send_command_full(
             CommandHeader.CHANGE_KEY,
             key_nr.to_bytes(),
-            new_key + version.to_bytes(),
+            key_data,
             expected=Status.OK,
         )
 
+        self.reset_session(self.current_key_nr)
         return True
 
     def get_key_version(self):
