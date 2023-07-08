@@ -10,7 +10,7 @@ Reference: https://www.nxp.com/docs/en/data-sheet/NT4H2421Tx.pdf
 import logging
 from binascii import hexlify
 from struct import pack
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
@@ -22,7 +22,7 @@ from nfc.tag.tt4 import Type4Tag, Type4TagCommandError
 from ...util import NULL_IV, bytes_xor
 from ..tag import Tag
 from .const import Application, DEFAULT_STATUS_OK, CommandHeader, Status
-from .structs import FileSettings
+from .structs import CommMode, FileSettings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -398,6 +398,37 @@ class NTAG424DNA(Tag):
         # ref: page 79, chapter 11.8.1
         raise NotImplementedError()
 
-    def write_data(self):
+    def write_data(
+        self,
+        file_nr: int,
+        data: bytes,
+        file_settings: Optional[FileSettings] = None,
+        offset: int = 0,
+    ):
         # ref: page 81, chapter 11.8.2
-        raise NotImplementedError()
+        if file_settings is None:
+            file_settings = self.get_file_settings(file_nr)
+
+        if offset + len(data) > file_settings.file_size:
+            raise ValueError("Data does not fit into file")
+
+        if len(data) > 248:
+            # FIXME we could fragment into multiple commands here
+            raise ValueError("Data does not fit into command")
+
+        header = file_nr.to_bytes() + pack("<L", offset)[:3] + pack("<L", len(data))[:3]
+
+        # FIXME handle if we need to authenticate with another key here
+
+        if file_settings.file_option.comm_mode == CommMode.PLAIN:
+            self.send_command_plain(
+                CommandHeader.WRITE_DATA, header, data, expected=Status.OK
+            )
+        elif file_settings.file_option.comm_mode == CommMode.MAC:
+            self.send_command_mac(
+                CommandHeader.WRITE_DATA, header, data, expected=Status.OK
+            )
+        elif file_settings.file_option.comm_mode == CommMode.FULL:
+            self.send_command_full(
+                CommandHeader.WRITE_DATA, header, data, expected=Status.OK
+            )

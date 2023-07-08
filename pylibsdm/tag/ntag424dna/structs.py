@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from typing import Any, ClassVar, Optional, Self
 from urllib.parse import parse_qsl, urldefrag, urlencode, urlparse, urlunparse
 
-from pydantic import BaseModel, root_validator
+from pydantic import BaseModel, Field, root_validator
 from pydantic.types import NonNegativeInt, PositiveInt
 
 from ..structs import (
@@ -112,9 +112,9 @@ class FileOption(BaseModel):
     """
 
     #: SDM (Secure Dynamic Messaging) and mirroring is enabled
-    sdm_enabled: bool
+    sdm_enabled: bool = False
     #: Communication mode needed to access file data
-    comm_mode: CommMode
+    comm_mode: CommMode = CommMode.PLAIN
 
     def to_bytes(self) -> bytes:
         """Serialize file option for wire (e.g. in ChangeFileSettings)."""
@@ -221,8 +221,8 @@ class FileSettings(BaseFileSettings):
     Defined in spec on page 75, table 73.
     """
 
-    file_option: FileOption
-    access_rights: AccessRights
+    file_option: FileOption = Field(default_factory=FileOption)
+    access_rights: AccessRights = Field(default_factory=AccessRights)
     sdm_options: Optional[SDMOptions] = None
     sdm_access_rights: Optional[SDMAccessRights] = None
 

@@ -4,6 +4,7 @@
 
 from typing import Self
 
+from ndef import UriRecord
 from pydantic import AnyHttpUrl, BaseModel
 
 
@@ -14,6 +15,10 @@ class URLParamConfig(BaseModel):
 
     def get_file_settings(self) -> "FileSettings":
         raise NotImplementedError()
+
+    def get_file_data(self) -> bytes:
+        record = UriRecord(iri=self.base_url)
+        return record.data
 
 
 class FileSettings(BaseModel):

@@ -39,7 +39,9 @@ class MockType4Tag:
         "90770000010000": "A6A2B3C572D06C097BB8DB70463E22DC91AF",
         # FIXME two following lines probably wrong due to broken spec
         "90AF000020BE7D45753F2CAB85F34BC60CE58B940763FE969658A532DF6D95EA2773F6E99100": "B888349C24B315EAB5B589E279C8263E9100",
-        "905F0000190261B6D97903566E84C3AE5274467E89EAD799B7C1A0EF7A0400": "910057BFF87B1241E93D",
+        "905F0000190261B6D97903566E84C3AE5274467E89EAD799B7C1A0EF7A0400": "57BFF87B1241E93D9100",
+        "908D00001F030000000A00006B5E6804909962FC4E3FF5522CF0F8436C0C53315B9C73AA00": "C26D236E4A7C046D9100",
+        "908D000019010E0000120000FF0506E1050080828300000000000000000000": "9100",
     }
 
     def __init__(self, apdu_map: Optional[dict[str, str]] = None):
@@ -244,5 +246,40 @@ def test_change_file_settings(sdm_tag):
 
     assert (
         "905F0000190261B6D97903566E84C3AE5274467E89EAD799B7C1A0EF7A0400"
+        in sdm_tag.tag.apdus_called
+    )
+
+
+def test_write_data_3(sdm_tag):
+    # ref: page 37, table 22
+    sdm_tag.k_ses_auth_enc = unhexlify("7A93D6571E4B180FCA6AC90C9A7488D4")
+    sdm_tag.k_ses_auth_mac = unhexlify("FC4AF159B62E549B5812394CAB1918CC")
+    sdm_tag.ti = unhexlify("7614281A")
+    sdm_tag.cmdctr = 0
+
+    file_settings = FileSettings(
+        file_option=FileOption(comm_mode=CommMode.FULL), file_size=128
+    )
+
+    sdm_tag.write_data(3, unhexlify("0102030405060708090A"), file_settings)
+
+    assert (
+        "908D00001F030000000A00006B5E6804909962FC4E3FF5522CF0F8436C0C53315B9C73AA00"
+        in sdm_tag.tag.apdus_called
+    )
+
+
+def test_write_data_1(sdm_tag):
+    # ref: page 37, table 22
+    file_settings = FileSettings(
+        file_option=FileOption(comm_mode=CommMode.PLAIN), file_size=32
+    )
+
+    sdm_tag.write_data(
+        1, unhexlify("FF0506E10500808283000000000000000000"), file_settings, offset=14
+    )
+
+    assert (
+        "908D000019010E0000120000FF0506E1050080828300000000000000000000"
         in sdm_tag.tag.apdus_called
     )

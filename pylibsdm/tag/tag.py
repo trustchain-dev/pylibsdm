@@ -49,6 +49,15 @@ class Tag:
     def change_file_settings(self, file_nr: int, file_settings: FileSettings):
         raise NotImplementedError()
 
+    def write_data(
+        self,
+        file_nr: int,
+        data: bytes,
+        file_settings: Optional[FileSettings] = None,
+        offset: int = 0,
+    ):
+        raise NotImplementedError()
+
     @classmethod
     def load_tag_modules(cls):
         eps = entry_points(group="pylibsdm.tags")
