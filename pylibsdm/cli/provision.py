@@ -11,9 +11,9 @@ import nfc
 import typer
 from rich.pretty import pretty_repr
 
-from ..tag.tag import Tag
+from .. import tag
 
-TagModule = Tag.get_tag_modules_enum()
+TagModule = tag.Tag.get_tag_modules_enum()
 
 app = typer.Typer()
 
@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 @app.callback()
 def configure_provision(
     ctx: typer.Context,
-    tag_module: TagModule = typer.Argument(
-        ..., help="Type of NFC tag to provision", case_sensitive=False
+    tag_module: Optional[TagModule] = typer.Option(
+        None, help="Type of NFC tag to provision", case_sensitive=False
     ),
     key: Annotated[
         Optional[list[str]],
@@ -33,7 +33,10 @@ def configure_provision(
     json: Optional[Path] = typer.Option(None, help="Path to a JSON file to read/write"),
 ):
     """Provision (configure) NFC tokens for SDM usage"""
-    ctx.obj["tag_module"] = Tag.get_tag_module(tag_module)
+    if tag_module:
+        ctx.obj["tag_module"] = tag.Tag.get_tag_module(tag_module)
+    else:
+        ctx.obj["tag_module"] = tag
 
     ctx.obj["keys"] = {}
     for slot_key in key or []:
@@ -50,7 +53,7 @@ def get_file_settings(
 ):
     """Retrieve current settings for a file on tag"""
 
-    def _do_get_file_settings(tag: Tag) -> bool:
+    def _do_get_file_settings(tag: tag.Tag) -> bool:
         try:
             file_settings = tag.get_file_settings(file_nr)
             logger.info(
@@ -93,7 +96,7 @@ def change_file_settings(
         )
         raise typer.Exit(code=2)
 
-    def _do_change_file_settings(tag: Tag) -> bool:
+    def _do_change_file_settings(tag: tag.Tag) -> bool:
         try:
             tag.change_file_settings(file_nr, file_settings)
             logger.info("Changed file settings of file nr. %d", file_nr)
