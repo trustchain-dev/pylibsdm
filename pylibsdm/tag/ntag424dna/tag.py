@@ -356,6 +356,7 @@ class NTAG424DNA(Tag):
             expected=Status.OK,
         )
 
+        self._keys[key_nr] = new_key
         self.reset_session(self.current_key_nr)
         return True
 
