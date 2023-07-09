@@ -544,7 +544,7 @@ class FileSettings(BaseFileSettings):
         url = urlparse(url)
         params = parse_qsl(url.query)
 
-        next_offset = len(urlunparse(url)) + 1
+        next_offset = len(urlunparse(url))
 
         file_option = FileOption(sdm_enabled=True, comm_mode=CommMode.PLAIN)
         access_rights = config.access_rights or AccessRights()
@@ -649,3 +649,6 @@ class URLParamConfig(BaseURLParamConfig):
 
     def get_file_settings(self) -> "FileSettings":
         return FileSettings.for_url(self)[0]
+
+    def get_url(self) -> str:
+        return FileSettings.for_url(self)[1]

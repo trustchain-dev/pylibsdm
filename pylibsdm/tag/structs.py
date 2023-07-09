@@ -4,7 +4,7 @@
 
 from typing import Self
 
-from ndef import UriRecord
+import ndef
 from pydantic import AnyHttpUrl, BaseModel
 
 
@@ -16,9 +16,14 @@ class URLParamConfig(BaseModel):
     def get_file_settings(self) -> "FileSettings":
         raise NotImplementedError()
 
+    def get_url(self) -> str:
+        raise NotImplementedError()
+
     def get_file_data(self) -> bytes:
-        record = UriRecord(iri=self.base_url)
-        return record.data
+        message = b"".join(ndef.message_encoder([ndef.UriRecord(iri=self.get_url())]))
+        if len(message) > 253:
+            raise ValueError("Message is too long")
+        return b"\x00" + len(message).to_bytes() + message
 
 
 class FileSettings(BaseModel):

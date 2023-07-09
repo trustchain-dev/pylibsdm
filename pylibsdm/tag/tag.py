@@ -55,6 +55,7 @@ class Tag:
         data: bytes,
         file_settings: Optional[FileSettings] = None,
         offset: int = 0,
+        pad: bool = False,
     ):
         raise NotImplementedError()
 

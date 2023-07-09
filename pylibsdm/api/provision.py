@@ -23,11 +23,16 @@ for name, module in Tag.get_tag_modules().items():
     class RawFileConfig(BaseModel):
         f"""Manual configuration of all file attributes and data of a {name} tag."""
 
-        settings: module.FileSettings = Field("Settings for the file to deploy")
-        # FIXME add data
+        settings: module.FileSettings = Field(
+            description="Settings for the file to deploy"
+        )
+        data: bytes = Field(description="Raw binary data for the file")
 
         def get_file_settings(self) -> module.FileSettings:
             return self.settings
+
+        def get_file_data(self) -> bytes:
+            return self.data
 
     class TagConfig(BaseModel):
         f"""Configuration container for provisioning a {name} tag."""
@@ -75,6 +80,10 @@ class ProvisionJob(BaseModel):
             sdm_tag.change_key(key_nr, key)
 
         for file_nr, file_config in self.tag_config.files.items():
-            logger.info("Changing file settings for file nr. %d", file_nr)
             file_settings = file_config.get_file_settings()
+            logger.info("Changing file settings for file nr. %d", file_nr)
             sdm_tag.change_file_settings(file_nr, file_settings)
+
+            file_data = file_config.get_file_data()
+            logger.info("Writing file data for file nr. %d", file_nr)
+            sdm_tag.write_data(file_nr, file_data, file_settings, pad=True)

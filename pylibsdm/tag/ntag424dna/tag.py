@@ -394,9 +394,47 @@ class NTAG424DNA(Tag):
             expected=Status.OK,
         )
 
-    def read_data(self):
+    def read_data(
+        self,
+        file_nr: int,
+        file_settings: Optional[FileSettings] = None,
+        offset: int = 0,
+        length: int = 0,
+    ) -> bytes:
         # ref: page 79, chapter 11.8.1
-        raise NotImplementedError()
+        if file_settings is None:
+            file_settings = self.get_file_settings(file_nr)
+
+        if length == 0:
+            length = file_settings.file_size - offset - 2
+
+        if offset + length > file_settings.file_size:
+            raise ValueError("Requested data is longer than file")
+
+        if length > 254:
+            # FIXME we could fragment into multiple commands here
+            raise ValueError("Data does not fit into response")
+
+        header = file_nr.to_bytes() + pack("<L", offset)[:3] + pack("<L", length)[:3]
+
+        # FIXME handle if we need to authenticate with another key here
+
+        if file_settings.file_option.comm_mode == CommMode.PLAIN:
+            res = self.send_command_plain(
+                CommandHeader.READ_DATA, header, b"", expected=Status.OK
+            )
+        elif file_settings.file_option.comm_mode == CommMode.MAC:
+            res = self.send_command_mac(
+                CommandHeader.READ_DATA, header, b"", expected=Status.OK
+            )
+        elif file_settings.file_option.comm_mode == CommMode.FULL:
+            res = self.send_command_full(
+                CommandHeader.READ_DATA, header, b"", expected=Status.OK
+            )
+        else:
+            res = b""
+
+        return res
 
     def write_data(
         self,
@@ -404,6 +442,7 @@ class NTAG424DNA(Tag):
         data: bytes,
         file_settings: Optional[FileSettings] = None,
         offset: int = 0,
+        pad: bool = False,
     ):
         # ref: page 81, chapter 11.8.2
         if file_settings is None:
@@ -411,6 +450,9 @@ class NTAG424DNA(Tag):
 
         if offset + len(data) > file_settings.file_size:
             raise ValueError("Data does not fit into file")
+
+        if pad and len(data) - offset < 248:
+            data += (248 - len(data) - offset) * b"\0"
 
         if len(data) > 248:
             # FIXME we could fragment into multiple commands here
