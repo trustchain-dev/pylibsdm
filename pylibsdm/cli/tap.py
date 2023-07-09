@@ -36,10 +36,10 @@ def validate_uri_params(
     param_cmac_input: Optional[str] = typer.Option(
         None, help="URI parameter to calculate CMAC from"
     ),
-    file_key: str = typer.Argument(
+    file_key: str = typer.Option(
         16 * "00", help="Key for decrypting SDM file data (hex)"
     ),
-    meta_key: str = typer.Argument(
+    meta_key: str = typer.Option(
         16 * "00", help="Key for decrypting SDM meta data (hex)"
     ),
 ):

@@ -149,7 +149,13 @@ class ParamValidator:
         )
         i_cmac = re.search(f"[?&]{param_cmac}=", uri).start() + 2 + len(param_cmac)
 
-        return uri[i_cmac_input:i_cmac]
+        logger.debug(
+            "Guessed offsets: CMAC input = %d, CMAC = %d", i_cmac_input, i_cmac
+        )
+        cmac_input = uri[i_cmac_input:i_cmac]
+        logger.debug("Using CMAC input: %s", cmac_input)
+
+        return cmac_input
 
     @property
     def ive(self) -> bytes:
