@@ -400,6 +400,7 @@ class NTAG424DNA(Tag):
         file_settings: Optional[FileSettings] = None,
         offset: int = 0,
         length: int = 0,
+        reauth: bool = False,
     ) -> bytes:
         # ref: page 79, chapter 11.8.1
         if file_settings is None:
@@ -417,7 +418,23 @@ class NTAG424DNA(Tag):
 
         header = file_nr.to_bytes() + pack("<L", offset)[:3] + pack("<L", length)[:3]
 
-        # FIXME handle if we need to authenticate with another key here
+        _previous_key_nr = self.current_key_nr
+        if self.current_key_nr not in (
+            file_settings.access_rights.read.value,
+            file_settings.access_rights.read_write.value,
+        ):
+            if reauth:
+                LOGGER.warning(
+                    "Current key %d has no read access to file; changing key to %d",
+                    self.current_key_nr,
+                    file_settings.access_rights.read.value,
+                )
+                self.reset_session(file_settings.access_rights.read.value)
+            else:
+                LOGGER.warning(
+                    "Current key %d has no read access to file; trying anyway",
+                    self.current_key_nr,
+                )
 
         if file_settings.file_option.comm_mode == CommMode.PLAIN:
             res = self.send_command_plain(
@@ -434,6 +451,10 @@ class NTAG424DNA(Tag):
         else:
             res = b""
 
+        if reauth and self.current_key_nr != _previous_key_nr:
+            LOGGER.warning("Changing key back to %d", _previous_key_nr)
+            self.reset_session(_previous_key_nr)
+
         return res
 
     def write_data(
@@ -443,6 +464,7 @@ class NTAG424DNA(Tag):
         file_settings: Optional[FileSettings] = None,
         offset: int = 0,
         pad: bool = False,
+        reauth: bool = False,
     ):
         # ref: page 81, chapter 11.8.2
         if file_settings is None:
@@ -460,7 +482,23 @@ class NTAG424DNA(Tag):
 
         header = file_nr.to_bytes() + pack("<L", offset)[:3] + pack("<L", len(data))[:3]
 
-        # FIXME handle if we need to authenticate with another key here
+        _previous_key_nr = self.current_key_nr
+        if self.current_key_nr not in (
+            file_settings.access_rights.write.value,
+            file_settings.access_rights.read_write.value,
+        ):
+            if reauth:
+                LOGGER.warning(
+                    "Current key %d has no write access to file; changing key to %d",
+                    self.current_key_nr,
+                    file_settings.access_rights.write.value,
+                )
+                self.reset_session(file_settings.access_rights.write.value)
+            else:
+                LOGGER.warning(
+                    "Current key %d has no write access to file; trying anyway",
+                    self.current_key_nr,
+                )
 
         if file_settings.file_option.comm_mode == CommMode.PLAIN:
             self.send_command_plain(
@@ -474,3 +512,7 @@ class NTAG424DNA(Tag):
             self.send_command_full(
                 CommandHeader.WRITE_DATA, header, data, expected=Status.OK
             )
+
+        if reauth and self.current_key_nr != _previous_key_nr:
+            LOGGER.warning("Changing key back to %d", _previous_key_nr)
+            self.reset_session(_previous_key_nr)

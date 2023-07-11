@@ -56,6 +56,7 @@ class Tag:
         file_settings: Optional[FileSettings] = None,
         offset: int = 0,
         pad: bool = False,
+        reauth: bool = False,
     ):
         raise NotImplementedError()
 
