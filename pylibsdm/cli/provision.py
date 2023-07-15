@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
 import logging
-from binascii import unhexlify
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -41,7 +40,7 @@ def configure_provision(
     ctx.obj["keys"] = {}
     for slot_key in key or []:
         slot, key_hex = slot_key.split(":")
-        ctx.obj["keys"][int(slot)] = unhexlify(key_hex)
+        ctx.obj["keys"][int(slot)] = bytes.fromhex(key_hex)
 
     ctx.obj["json"] = json
 

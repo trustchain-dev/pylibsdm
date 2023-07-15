@@ -4,7 +4,6 @@
 
 import logging
 import re
-from binascii import hexlify, unhexlify
 from struct import pack, unpack
 from typing import Optional
 from urllib.parse import parse_qsl, urlparse
@@ -65,8 +64,8 @@ class ParamValidator:
         #       else:
         #           self.tag_class = tag_class
 
-        self.k_sdm_file_read = unhexlify(k_sdm_file_read)
-        self.k_sdm_meta_read = unhexlify(k_sdm_meta_read)
+        self.k_sdm_file_read = bytes.fromhex(k_sdm_file_read)
+        self.k_sdm_meta_read = bytes.fromhex(k_sdm_meta_read)
 
         self.k_ses_sdm_file_read_enc = None
         self.k_ses_sdm_file_read_mac = None
@@ -190,7 +189,7 @@ class ParamValidator:
             raise TypeError("Must provide e_picc_data as argument or in instance")
 
         cipher = AES.new(self.k_sdm_meta_read, AES.MODE_CBC, NULL_IV)
-        picc_data = cipher.decrypt(unhexlify(e_picc_data))
+        picc_data = cipher.decrypt(bytes.fromhex(e_picc_data))
 
         # FIXME refactor into dataclass; probably move into tag class
         #  ref for NTAG 424 DNA: page 38, table 21
@@ -203,7 +202,7 @@ class ParamValidator:
         next_offset = 1
         if self.uid_mirror:
             self.uid = picc_data[next_offset : next_offset + uid_length]
-            logger.info("UID mirrored: %s", hexlify(self.uid).decode())
+            logger.info("UID mirrored: %s", self.uid.hex)
             next_offset += uid_length
         else:
             logger.info("UID not mirrored")
@@ -236,7 +235,7 @@ class ParamValidator:
             self.generate_sdm_session_keys()
 
         cipher = AES.new(self.k_ses_sdm_file_read_enc, AES.MODE_CBC, self.ive)
-        file_data = cipher.decrypt(unhexlify(e_file_data))
+        file_data = cipher.decrypt(bytes.fromhex(e_file_data))
 
         return file_data
 
@@ -267,13 +266,13 @@ class ParamValidator:
             cmac.update(mac_input.encode())
         cmac_expected = cmac.digest()[1::2]
 
-        if cmac_expected == unhexlify(cmac_provided):
+        if cmac_expected == bytes.fromhex(cmac_provided):
             logger.info("CMAC matches: %s", cmac_provided.lower())
             return True
         else:
             logger.warning(
                 "CMAC does not match: %s != %s",
                 cmac_provided.lower(),
-                hexlify(cmac_expected).decode(),
+                cmac_expected.hex(),
             )
             return False

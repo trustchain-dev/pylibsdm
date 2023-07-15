@@ -8,7 +8,6 @@ Reference: https://www.nxp.com/docs/en/data-sheet/NT4H2421Tx.pdf
 """
 
 import logging
-from binascii import hexlify
 from struct import pack
 from typing import ClassVar, Optional
 
@@ -102,15 +101,15 @@ class NTAG424DNA(Tag):
         # ref: page 28, chapter 9.1.8
         LOGGER.debug(
             "SEND: command %s, hdr %s, data %s",
-            hexlify(bytearray(command.value)),
-            hexlify(hdr),
-            hexlify(data),
+            bytearray(command.value).hex(),
+            hdr.hex(),
+            data.hex(),
         )
         res = self.tag.send_apdu(
             *command.value, hdr + data, mrl=mrl, check_status=False
         )
         status, rapdu = res[-2:], res[:-2]
-        LOGGER.debug("RECV: status %s, payload %s", hexlify(status), hexlify(rapdu))
+        LOGGER.debug("RECV: status %s, payload %s", status.hex(), rapdu.hex())
 
         if status != expected.value:
             raise Type4TagCommandError.from_status(status)
@@ -132,11 +131,11 @@ class NTAG424DNA(Tag):
 
         LOGGER.debug(
             "MAC: command %s, counter %d, TI %s, hdr %s, data %s",
-            hexlify(command.value[1].to_bytes()),
+            command.value[1].to_bytes().hex(),
             self.cmdctr,
-            hexlify(self.ti),
-            hexlify(hdr),
-            hexlify(data),
+            self.ti.hex(),
+            hdr.hex(),
+            data.hex(),
         )
         mac_input = (
             command.value[1].to_bytes() + pack("<H", self.cmdctr) + self.ti + hdr + data
@@ -171,8 +170,8 @@ class NTAG424DNA(Tag):
             if mac_returned != mac_returned_expected:
                 raise ValueError(
                     "Returned MAC %s does not match expected MAC %s",
-                    hexlify(mac_returned).decode(),
-                    hexlify(mac_returned_expected).decode(),
+                    mac_returned.hex(),
+                    mac_returned_expected.hex(),
                 )
             LOGGER.debug("Returned MAC matches expected MAC")
         else:
@@ -193,7 +192,7 @@ class NTAG424DNA(Tag):
             LOGGER.info("Not authenticated for command mode FULL; authenticating")
             self.authenticate_ev2_first()
 
-        LOGGER.debug("ENC: payload %s", hexlify(data))
+        LOGGER.debug("ENC: payload %s", data.hex())
         cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivc)
         encrypted = cipher.encrypt(pad(data, 16, style="iso7816"))
 
@@ -204,7 +203,7 @@ class NTAG424DNA(Tag):
             raise
 
         if res:
-            LOGGER.debug("DEC: payload %s", hexlify(res))
+            LOGGER.debug("DEC: payload %s", res.hex())
             cipher = AES.new(self.k_ses_auth_enc, AES.MODE_CBC, self.ivr)
             decrypted = cipher.decrypt(res)
         else:
@@ -214,7 +213,7 @@ class NTAG424DNA(Tag):
         return decrypted
 
     def select_application(self, aid: "Application"):
-        LOGGER.debug("Selecting application %s", hexlify(aid.value))
+        LOGGER.debug("Selecting application %s", aid.value.hex())
         self.send_command_plain(CommandHeader.ISO_SELECT_NDEF_APP, data=aid.value)
         self.reset_session(self.current_key_nr)
 
@@ -225,7 +224,7 @@ class NTAG424DNA(Tag):
         rndb = cipher.decrypt(e_rndb)
         rndb_ = rndb[1:] + rndb[0].to_bytes()
         rnda = get_random_bytes(16)
-        LOGGER.debug("AUTH: RndA %s, RndB %s", hexlify(rnda), hexlify(rndb))
+        LOGGER.debug("AUTH: RndA %s, RndB %s", rnda.hex(), rndb.hex())
 
         cipher = AES.new(key, AES.MODE_CBC, NULL_IV)
         encrypted = cipher.encrypt(rnda + rndb_)
@@ -293,9 +292,9 @@ class NTAG424DNA(Tag):
         self.pcdcap2 = data[26:32]
         LOGGER.debug(
             "AUTH: TI %s, PDCAP %s, PCDCAP %s",
-            hexlify(self.ti),
-            hexlify(self.pdcap2),
-            hexlify(self.pcdcap2),
+            self.ti.hex(),
+            self.pdcap2.hex(),
+            self.pcdcap2.hex(),
         )
 
         rnda_ = data[4:20]
@@ -375,7 +374,7 @@ class NTAG424DNA(Tag):
             b"",
             expected=Status.OK,
         )
-        LOGGER.debug("Received file settings: %s", hexlify(data))
+        LOGGER.debug("Received file settings: %s", data.hex())
 
         return FileSettings.from_bytes(data)
 
@@ -384,7 +383,7 @@ class NTAG424DNA(Tag):
         LOGGER.debug("Changing settings of file number %d", file_nr)
 
         settings_data = file_settings.to_bytes()
-        LOGGER.debug("Sending file settings: %s", hexlify(settings_data))
+        LOGGER.debug("Sending file settings: %s", settings_data.hex())
 
         # FIXME make key number selectable
         self.send_command_full(

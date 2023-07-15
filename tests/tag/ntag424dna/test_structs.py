@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 
 import pytest
-from binascii import unhexlify
 
 from typer.models import NoneType
 
@@ -18,7 +17,7 @@ from pylibsdm.tag.ntag424dna.structs import (
 
 def test_access_rights_from_bytes():
     # ref: page 26
-    acs = AccessRights.from_bytes(unhexlify("00E0"))
+    acs = AccessRights.from_bytes(bytes.fromhex("00E0"))
     assert acs.read_write == AccessCondition.KEY_0
     assert acs.change == AccessCondition.KEY_0
     assert acs.read == AccessCondition.FREE_ACCESS
@@ -29,7 +28,7 @@ def test_access_rights_from_bytes():
 def test_file_settings_from_bytes():
     # ref: page 26, table 12
     file_settings = FileSettings.from_bytes(
-        unhexlify("004000E0000100C1F121200000430000")
+        bytes.fromhex("004000E0000100C1F121200000430000")
     )
 
     assert file_settings.file_type == FileType.STANDARD_DATA
