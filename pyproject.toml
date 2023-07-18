@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pylibsdm"
-version = "1.0.0a0.dev2"
+version = "1.0.0a0"
 description = "Python library for handling Secure Dynamic Messaging (SDM) of NFC cards like the NTAG 424 DNA"
 authors = ["Dominik George <nik@naturalnet.de>"]
 repository = "https://codeberg.org/Bergblau/pylibsdm"
